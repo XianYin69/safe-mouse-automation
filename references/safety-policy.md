@@ -18,6 +18,13 @@
 
 鼠标移动、左/右/双击、拖拽、滚动、截图捕获、截图比对。
 
+## 缓存与留痕（红线）
+
+- 截图、tmp、日志等缓存文件一律不得写入 skill 目录（含 `<SKILL_DIR>/tmp`、`__pycache__` 等）。
+- 默认落用户缓存目录：Windows `%LOCALAPPDATA%\safe-mouse-automation\`，
+  macOS `~/Library/Caches/safe-mouse-automation/`，Linux `~/.cache/safe-mouse-automation/`。
+- 可用环境变量 `SAFE_MOUSE_CACHE` 重定向；目标若解析到 skill 根内，脚本直接拒绝执行。
+
 ## 用户确认要求
 
 - 涉及右键菜单中的修改性选项（如"删除"、"重命名后移动"）→ 必须请求用户确认。
