@@ -48,8 +48,13 @@ def show(text, ttl=15):
     _save(step=text, step_expires=time.time() + float(ttl)); _ensure()
     return {"ok": True, "hud_step": text}
 
+def alert(text, ttl=1800):
+    """真人验证/登录墙等需人工介入的告警行（红色⚠，默认 30 分钟，优先于 session/step 显示）。"""
+    _save(alert=text, alert_expires=time.time() + float(ttl)); _ensure()
+    return {"ok": True, "hud_alert": text}
+
 def hide():
-    _save(session="", session_expires=0, step="", step_expires=0)
+    _save(session="", session_expires=0, step="", step_expires=0, alert="", alert_expires=0)
     return {"ok": True, "hud": "hidden"}
 
 def _kill_stale():
@@ -76,12 +81,14 @@ def _run():
     lbl = tk.Label(r, font=("Segoe UI", 10), bg="#1e1e2e", fg="#a6e3a1", padx=12, pady=6, justify="left")
     lbl.pack(); hit = [False]; idle = [0]
     def tick():
-        d = _load(); now = time.time(); lines = []
+        d = _load(); now = time.time(); lines = []; red = False
+        if d.get("alert") and now < d.get("alert_expires", 0):
+            lines.append("⚠ " + d["alert"]); red = True
         if d.get("session") and now < d.get("session_expires", 0): lines.append("◆ " + d["session"])
         if d.get("step") and now < d.get("step_expires", 0): lines.append("  " + d["step"])
         t = "\n".join(lines)
         if t:
-            idle[0] = 0; lbl.config(text=t)
+            idle[0] = 0; lbl.config(text=t, fg="#f38ba8" if red else "#a6e3a1")
             if not r.winfo_viewable(): r.deiconify()
         elif r.winfo_viewable():
             r.withdraw(); idle[0] += 1
@@ -105,6 +112,7 @@ if __name__ == "__main__":
     else:
         if cmd == "session": r = session(a[1] if len(a) > 1 else "自动化任务进行中", a[2] if len(a) > 2 else 1800)
         elif cmd == "show": r = show(a[1] if len(a) > 1 else "步骤进行中", a[2] if len(a) > 2 else 15)
+        elif cmd == "alert": r = alert(a[1] if len(a) > 1 else "需要人工处理", a[2] if len(a) > 2 else 1800)
         elif cmd == "hide": r = hide()
-        else: r = {"help": "session <任务简述> [ttl秒=1800] | show <步骤> [ttl秒=15] | hide"}
+        else: r = {"help": "session <任务简述> [ttl秒=1800] | show <步骤> [ttl秒=15] | alert <告警> [ttl秒=1800] | hide"}
         print(json.dumps(r, ensure_ascii=False, indent=2))

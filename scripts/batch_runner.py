@@ -28,7 +28,7 @@ def _op(st, mode, dur):
     if op == "shot": return screenshot_verify.capture(label=st.get("label", "step"))
     return {"ok": False, "reason": "不支持的动作: " + str(op)}
 
-def run(steps, mode="virtual", delay=0.15):
+def run(steps, mode="virtual", delay=0.15, guard=None):
     out, dur = [], 0.05 if mode in ("real", "physical") else 0.0
     n = len(steps)
     for i, st in enumerate(steps):
@@ -37,6 +37,13 @@ def run(steps, mode="virtual", delay=0.15):
             out.append({"step": i, "blocked": g["reason"]}); continue
         hud_overlay.show(f"[{i + 1}/{n}] {st.get('desc') or st.get('op')} ({st.get('x', '-')},{st.get('y', '-')})", ttl=max(10, (n - i) * 3))
         out.append({"step": i, **_op(st, mode, dur)})
+        if guard:
+            import human_gate
+            hg = human_gate.check(guard)
+            if hg.get("blocked"):
+                out.append({"step": i, "human_gate": "stopped", "hits": hg["hits"]})
+                return {"mode": mode, "steps": n, "stopped_at": i, "human_gate": hg,
+                        "done": sum(1 for r in out if r.get("ok")), "results": out}
         if i < n - 1: time.sleep(delay)
     # 不自动 hide：HUD 会话行持续显示，任务整体结束时由调用方 hud_overlay.hide()
     return {"mode": mode, "steps": n, "done": sum(1 for r in out if r.get("ok")), "results": out}
@@ -46,9 +53,10 @@ if __name__ == "__main__":
     mode = "physical" if "--physical" in flags else "real" if "--real" in flags else "virtual"
     if mode != "virtual" and not real_input.IS_WIN: mode = "physical"
     delay = float(next((f.split("=", 1)[1] for f in flags if f.startswith("--delay=")), 0.15))
+    guard = next((f.split("=", 1)[1] for f in flags if f.startswith("--guard=")), None)
     try:
         src = args[0] if args else "help"
         steps = json.load(open(src, encoding="utf-8-sig")) if os.path.isfile(src) else json.loads(src)
-        r = run(steps, mode, delay) if isinstance(steps, list) and steps else {"error": "步骤清单为空"}
-    except Exception as e: r = {"error": str(e), "help": "run <steps.json|json数组字符串> [--virtual|--real|--physical] [--delay=0.15]"}
+        r = run(steps, mode, delay, guard) if isinstance(steps, list) and steps else {"error": "步骤清单为空"}
+    except Exception as e: r = {"error": str(e), "help": "run <steps.json> [--virtual|--real|--physical] [--delay=0.15] [--guard=<窗口子串>]"}
     print(json.dumps(r, ensure_ascii=False, indent=2))

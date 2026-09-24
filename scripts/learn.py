@@ -51,6 +51,12 @@ def note(app, text):
     e["updated"] = time.strftime("%Y-%m-%d %H:%M:%S"); save(d)
     return {"ok": True, "app": app, "notes": len(notes)}
 
+def op(app, action, spec):
+    """记录某应用某操作的学习成果：op foobar "播放/暂停" '{"via":"app_ops.act","element":"播放"}'"""
+    d = load(); e = d.setdefault(app, {}); o = e.setdefault("ops", {})
+    o[action] = spec; e["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    save(d); return {"ok": True, "app": app, "action": action, "ops": len(o)}
+
 if __name__ == "__main__":
     a = [s for s in sys.argv[1:] if not s.startswith("--")]; cmd = a[0] if a else "help"
     try:
@@ -59,9 +65,16 @@ if __name__ == "__main__":
             if js.startswith("@"): js = open(js[1:], encoding="utf-8").read()
             r = put(a[1], **json.loads(js)) if len(a) > 1 else {"error": "需要 app"}
         elif cmd == "get": r = get(a[1] if len(a) > 1 else None)
+        elif cmd == "op":
+            js = a[3] if len(a) > 3 else "{}"
+            if js.startswith("@"): js = open(js[1:], encoding="utf-8").read()
+            r = op(a[1], a[2], json.loads(js)) if len(a) > 2 else {"error": "需要 app action json"}
+        elif cmd == "ops":
+            e = load().get(a[1], {}) if len(a) > 1 else {}
+            r = {"app": a[1] if len(a) > 1 else None, "ops": e.get("ops", {})}
         elif cmd == "note": r = note(a[1], a[2]) if len(a) > 2 else {"error": "需要 app 与 文本"}
         elif cmd == "del":
             d = load(); d.pop(a[1], None); save(d); r = {"ok": True, "removed": a[1]}
-        else: r = {"help": "put <app> <json> | get [app] | note <app> <文本> | del <app>", "file": path()}
+        else: r = {"help": "put <app> <json|@file> | get [app] | op <app> <动作> <json|@file> | ops <app> | note <app> <文本> | del <app>", "file": path()}
     except Exception as e: r = {"error": str(e)}
     print(json.dumps(r, ensure_ascii=False, indent=2))

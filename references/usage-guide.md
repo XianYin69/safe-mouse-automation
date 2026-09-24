@@ -53,6 +53,32 @@ UIA 取真实屏幕矩形，向目标 SysListView32 PostMessage `WM_LBUTTONDBLCL
 最小化的任务窗口自动 `SW_SHOWNOACTIVATE` 恢复。典型链：`open <桌面图标>` → `items <窗口>` →
 `openitem <窗口> <子项>` 逐层进入，最后 `openitem <窗口> xxx.exe` 运行，再 `learn put` 记录。
 
+## 应用直接操作通道（看界面、点控件、走菜单、填输入框）
+
+```bash
+python <SKILL_DIR>/scripts/app_ops.py controls "窗口标题子串" [n]   # 枚举 UIA 控件（名称/类型/坐标）
+python <SKILL_DIR>/scripts/app_ops.py act "窗口" "元素名"            # UIA Invoke/Toggle/Select 点击
+python <SKILL_DIR>/scripts/app_ops.py set "窗口" "输入框名" "文本"   # ValuePattern.SetValue 填输入框
+python <SKILL_DIR>/scripts/app_ops.py menus "窗口"                   # 枚举经典 Win32 菜单树（含命令 ID）
+python <SKILL_DIR>/scripts/app_ops.py menu "窗口" "文件/打开"        # WM_COMMAND 零鼠标执行菜单命令
+```
+
+UIA 不需要前台/可见，被遮挡照常生效；经典菜单经 `GetMenu/PostMessage WM_COMMAND` 零鼠标零焦点。
+配合 learn：`learn op <软件名> <动作> '{"via":"app_ops.menu","path":"文件/打开","cmd":101}'` 记录，
+下次 `learn get <软件名>` 直接命中照做。
+
+## 真人验证门禁（验证码/登录墙立即停止 + HUD 告警）
+
+```bash
+python <SKILL_DIR>/scripts/human_gate.py check "窗口标题子串"   # 检测窗口标题+UIA 文本，命中即停止+HUD alert
+python <SKILL_DIR>/scripts/human_gate.py web --port=9224 --match=百度   # 检测浏览器页面正文
+python <SKILL_DIR>/scripts/human_gate.py scan                  # 扫描全部可见窗口
+python <SKILL_DIR>/scripts/human_gate.py clear                 # 清除 HUD 告警
+```
+
+命中时 HUD 显示红色⚠告警行（类型/证据/需用户操作），任务立即停止，等待用户手动完成后继续。
+batch_runner `--guard=<窗口子串>` 每步自动检测，命中即中止。**绝不尝试绕过验证。**
+
 ## 浏览器后台通道（Edge/Chrome 首选，抗遮挡）
 
 ```bash
