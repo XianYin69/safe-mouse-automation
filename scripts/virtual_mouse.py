@@ -3,6 +3,10 @@
 不抢焦点、不改变前台窗口，零打扰。适用传统 Win32 消息窗口；个别应用（Chromium/Electron/
 DirectUI）忽略合成消息时，截图验证无变化，征得用户同意后才可改用 real_input.py 前台方式。"""
 import sys, os, json, ctypes
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ctypes import wintypes
 import real_input

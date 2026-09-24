@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""hud_overlay.py — HUD 提示浮窗：置顶、不抢焦点、点击穿透，显示当前自动化操作，不打扰用户。"""
+"""hud_overlay.py — HUD 提示浮窗：置顶、不抢焦点、点击穿透，只读展示。
+会话规则：任务开始 session <任务简述>（全程常显，默认 30 分钟），每步 show <步骤>（短时效），
+任务结束才 hide；session 与 step 分行渲染，两者都过期/为空时自动 withdraw，空闲 120s 进程自退。"""
 import sys, os, json, time, subprocess
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 def cache():
     if os.environ.get("SAFE_MOUSE_CACHE"): return os.environ["SAFE_MOUSE_CACHE"]
@@ -9,12 +15,17 @@ def cache():
 
 def state(): return os.path.join(cache(), "hud", "state.json")
 
-def _write(text, ttl):
-    d = os.path.dirname(state()); root = os.path.realpath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+def _load():
+    try: return json.load(open(state(), encoding="utf-8"))
+    except Exception: return {}
+
+def _save(**kv):
+    root = os.path.realpath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    d = os.path.dirname(state())
     if os.path.realpath(d) == root or os.path.realpath(d).startswith(root + os.sep):
         raise SystemExit("拒绝写入：HUD 缓存不得位于 skill 目录")
-    os.makedirs(d, exist_ok=True)
-    json.dump({"text": text, "expires": time.time() + ttl}, open(state(), "w", encoding="utf-8"))
+    cur = _load(); cur.update(kv)
+    os.makedirs(d, exist_ok=True); json.dump(cur, open(state(), "w", encoding="utf-8"))
 
 def _alive():
     try:
@@ -26,36 +37,57 @@ def _spawn():
     devnull = open(os.devnull, "r+b")
     subprocess.Popen([sys.executable, os.path.abspath(__file__), "_run"], stdin=devnull, stdout=devnull, stderr=devnull, **kw)
 
-def show(text, ttl=15):
-    _write(text, float(ttl))
+def _ensure():
     if not _alive(): _spawn()
-    return {"ok": True, "hud": text}
+
+def session(text, ttl=1800):
+    _save(session=text, session_expires=time.time() + float(ttl)); _ensure()
+    return {"ok": True, "hud_session": text}
+
+def show(text, ttl=15):
+    _save(step=text, step_expires=time.time() + float(ttl)); _ensure()
+    return {"ok": True, "hud_step": text}
 
 def hide():
-    _write("", 0); return {"ok": True, "hud": "hidden"}
+    _save(session="", session_expires=0, step="", step_expires=0)
+    return {"ok": True, "hud": "hidden"}
+
+def _kill_stale():
+    if os.name != "nt": return
+    try:
+        ps = "Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | " \
+             "Where-Object { $_.CommandLine -match 'hud_overlay' -and $_.ProcessId -ne $PID } | ForEach-Object ProcessId"
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True, timeout=15).stdout
+        for pid in [int(x) for x in out.split() if x.strip().isdigit() and int(x) != os.getpid()]:
+            subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, timeout=10)
+    except Exception: pass
 
 def _run():
     import tkinter as tk
-    if os.name == "nt":  # DPI 感知：按物理像素定位，避免浮窗偏小/错位
+    _kill_stale()
+    if os.name == "nt":  # DPI 感知：按物理像素定位
         import ctypes
         try: ctypes.windll.shcore.SetProcessDpiAwareness(2)
         except Exception:
             try: ctypes.windll.user32.SetProcessDPIAware()
             except Exception: pass
     r = tk.Tk(); r.overrideredirect(True); r.configure(bg="#1e1e2e")
-    r.attributes("-topmost", True); r.attributes("-alpha", 0.8)
-    lbl = tk.Label(r, font=("Segoe UI", 10), bg="#1e1e2e", fg="#a6e3a1", padx=12, pady=6)
-    lbl.pack(); hit = [False]
+    r.attributes("-topmost", True); r.attributes("-alpha", 0.85)
+    lbl = tk.Label(r, font=("Segoe UI", 10), bg="#1e1e2e", fg="#a6e3a1", padx=12, pady=6, justify="left")
+    lbl.pack(); hit = [False]; idle = [0]
     def tick():
-        try: d = json.load(open(state(), encoding="utf-8"))
-        except Exception: d = {}
-        t = d.get("text", "") if time.time() < d.get("expires", 0) else ""
+        d = _load(); now = time.time(); lines = []
+        if d.get("session") and now < d.get("session_expires", 0): lines.append("◆ " + d["session"])
+        if d.get("step") and now < d.get("step_expires", 0): lines.append("  " + d["step"])
+        t = "\n".join(lines)
         if t:
-            lbl.config(text=t)
+            idle[0] = 0; lbl.config(text=t)
             if not r.winfo_viewable(): r.deiconify()
-        elif r.winfo_viewable(): r.withdraw()
+        elif r.winfo_viewable():
+            r.withdraw(); idle[0] += 1
+            if idle[0] > 400: r.destroy(); return  # 空闲 120s 自动退出
         if not hit[0] and r.winfo_viewable() and os.name == "nt":
-            # 穿透+不抢焦点必须设在顶层帧窗口上；LAYERED 交给 -alpha 正确初始化
+            # 穿透+不抢焦点设在顶层帧窗口；LAYERED 由 -alpha 正确初始化
             import ctypes
             u = ctypes.windll.user32; h = u.GetParent(r.winfo_id()) or r.winfo_id()
             u.SetWindowLongW(h, -20, u.GetWindowLongW(h, -20) | 0x00000020 | 0x08000000)
@@ -71,7 +103,8 @@ if __name__ == "__main__":
     a = [s for s in sys.argv[1:] if not s.startswith("--")]; cmd = a[0] if a else "help"
     if cmd == "_run": _run()
     else:
-        if cmd == "show": r = show(a[1] if len(a) > 1 else "自动化运行中", a[2] if len(a) > 2 else 15)
+        if cmd == "session": r = session(a[1] if len(a) > 1 else "自动化任务进行中", a[2] if len(a) > 2 else 1800)
+        elif cmd == "show": r = show(a[1] if len(a) > 1 else "步骤进行中", a[2] if len(a) > 2 else 15)
         elif cmd == "hide": r = hide()
-        else: r = {"help": "show <text> [ttl秒] | hide"}
+        else: r = {"help": "session <任务简述> [ttl秒=1800] | show <步骤> [ttl秒=15] | hide"}
         print(json.dumps(r, ensure_ascii=False, indent=2))

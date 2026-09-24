@@ -2,6 +2,10 @@
 """mouse_ops.py — 前台操作统一入口（须先征得用户同意！）：Windows 走 real_input(SendInput)，
 打扰用户，默认请用 virtual_mouse.py 后台模式；其他平台回退 pyautogui。坐标越界一律拒绝。"""
 import sys, os, json
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import real_input
 DANGEROUS = ("delete", "format", "regedit", "shutdown", "reboot", "taskkill", "del ", "rm -")

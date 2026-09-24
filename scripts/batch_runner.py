@@ -2,6 +2,10 @@
 """batch_runner.py — 加快整体流程：单进程执行步骤清单，默认后台虚拟输入（PostMessage，零打扰）+HUD 提示。
 --real 前台真输入回退（移动物理光标/改焦点，须先取得用户同意）；--physical 为 pyautogui 非 Windows 回退。"""
 import sys, os, json, time
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import safety_gate, mouse_ops, virtual_mouse, real_input, hud_overlay, screenshot_verify
 
@@ -34,7 +38,7 @@ def run(steps, mode="virtual", delay=0.15):
         hud_overlay.show(f"[{i + 1}/{n}] {st.get('desc') or st.get('op')} ({st.get('x', '-')},{st.get('y', '-')})", ttl=max(10, (n - i) * 3))
         out.append({"step": i, **_op(st, mode, dur)})
         if i < n - 1: time.sleep(delay)
-    hud_overlay.hide()
+    # 不自动 hide：HUD 会话行持续显示，任务整体结束时由调用方 hud_overlay.hide()
     return {"mode": mode, "steps": n, "done": sum(1 for r in out if r.get("ok")), "results": out}
 
 if __name__ == "__main__":

@@ -4,6 +4,10 @@
 PostMessage（Chromium/Electron/DirectUI）且截图验证无变化时，经用户确认后才调用本模块。
 鼠标：move/click/drag/scroll；键盘：type（任意 Unicode 文本）与 key（组合快捷键）。"""
 import sys, time, ctypes
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 from ctypes import wintypes
 
 IS_WIN = sys.platform == "win32"

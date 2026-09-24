@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """safety_gate.py — 安全门禁：检查操作是否危险，列出禁止项，请求用户确认。"""
 import sys, json, re
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 BLOCKED = [
     {"pattern": r"del\s|rm\s|rmdir|Remove-Item.*-Recurse.*-Force", "reason": "文件删除"},
