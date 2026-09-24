@@ -17,8 +17,9 @@ HARD = [("验证码", "captcha"), ("人机验证", "human-verify"), ("安全验�
         ("请完成验证", "verify"), ("recaptcha", "captcha"), ("verify you are (a )?human|are you a robot", "human-verify"),
         ("geetest", "captcha"), ("防水墙", "captcha"), ("hcaptcha", "captcha")]
 SOFT = [("请登录", "login"), ("账号登录", "login"), ("手机号登录", "login"), ("欢迎登录", "login"),
-        ("登录后查看", "login-gate"), ("请先登录", "login"), ("sign in", "login"), ("log in", "login"),
-        ("login", "login")]
+        ("登录后查看", "login-gate"), ("请先登录", "login"), ("登录以管理", "login"), ("登录以", "login"),
+        ("密码", "login-form"), ("sign in", "login"), ("log in", "login"), ("login", "login")]
+BARE_LOGIN = ("登录", "login")  # 裸"登录"仅在页面主体极短（登录墙特征）时判定，避免电商导航栏误报
 
 def _scan_text(text):
     hits = []
@@ -28,6 +29,8 @@ def _scan_text(text):
     if not hits:
         for pat, kind in SOFT:
             if re.search(pat.lower(), low): hits.append({"kind": kind, "pattern": pat, "hard": False})
+        if not hits and BARE_LOGIN[0] in (text or "") and len((text or "").strip()) < 400:
+            hits.append({"kind": BARE_LOGIN[1], "pattern": BARE_LOGIN[0], "hard": False})
     return hits
 
 def _win_texts(sub):
