@@ -3,9 +3,10 @@ name: safe-mouse-automation
 description: >
   通过 Python 脚本在后台模拟鼠标与键盘操作用户电脑，截图确认操作结果；默认虚拟输入
   （PostMessage/CDP）不移动物理光标、不抢焦点、不打扰前台，含点击/滚轮/拖拽与打字/快捷键；
-  浏览器操作走 CDP 内核级模拟点击，窗口被遮挡同样生效；HUD 浮窗全程置顶提示任务信息
-  （置顶/穿透/不抢焦点）；SendInput 前台真输入为征得同意后的回退；批量执行加快整体流程；
-  内置安全门禁禁止危险操作，缓存不落 skill 目录。
+  浏览器走 CDP 内核级模拟点击、桌面软件走 desktop_ops 纯鼠标双击（枚举桌面图标/资源管理器项，
+  不用命令行启动）；学习功能 learn 把软件路径/启动链沉淀到 SMS 临时目录，操作前召回成功后回写；
+  HUD 浮窗全程置顶提示任务信息（置顶/穿透/不抢焦点）；SendInput 前台真输入为征得同意后的回退；
+  批量执行加快整体流程；内置安全门禁禁止危险操作，缓存不落 skill 目录。
 license: MIT
 metadata:
   category: automation
@@ -16,13 +17,16 @@ metadata:
 # Safe Mouse Automation
 
 **一切操作默认在后台执行，绝不打扰前台用户**：**虚拟输入**（PostMessage 鼠标+键盘，不移动物理
-光标、不抢焦点、不改变前台窗口）与 **CDP 浏览器通道**（`browser_cdp.py` 内核级模拟鼠标点击/打字，
-被遮挡/非前台照常生效）配合 **HUD 会话浮窗**（全程置顶显示任务简述+当前步骤）与**批量执行**。
+光标、不抢焦点、不改变前台窗口）配合 **CDP 浏览器通道**（`browser_cdp.py` 内核级模拟鼠标点击/打字，
+被遮挡/非前台照常生效）、**桌面软件鼠标通道**（`desktop_ops.py` 枚举桌面图标/资源管理器项并 PostMessage
+双击打开，纯鼠标定位不用命令行）、**学习功能**（`learn.py` 把"软件在哪、怎么开"沉淀到 SMS 临时目录，
+操作前召回免重复探索）配合 **HUD 会话浮窗**（全程置顶显示任务简述+当前步骤）与**批量执行**。
 仅当目标应用忽略合成消息且截图验证无变化时，**征得用户同意后**才可用 `real_input.py`（SendInput）前台回退。
 
 ## 1. 工作流程
 
-1. **识别意图**：确定目标操作，优先编排为步骤清单（`scripts/batch_runner.py` 一次进程跑完，最快）。
+1. **识别意图 + 学习召回**：确定目标操作；先 `learn.py get <软件名>` 召回已知路径/启动链，
+   命中则直接照做（免重复探索）。优先编排为步骤清单（`scripts/batch_runner.py` 一次进程跑完）。
 2. **安全检查**：每步经过 [`scripts/safety_gate.py`](scripts/safety_gate.py) 门禁——
    危险操作（文件删除、系统修改、注册表写入、任意 shell 命令）一律拒绝并报告用户。
 3. **HUD 会话开启**：任务开始即 `hud_overlay.py session <任务简述> [ttl]`（默认 30 分钟，全程常显）；
@@ -32,6 +36,10 @@ metadata:
 5. **后台执行操作**：
    - 桌面 Win32 应用：[`scripts/virtual_mouse.py`](scripts/virtual_mouse.py) 点击/滚轮/拖拽/打字/快捷键
      （op: click/scroll/drag/move/type/key/shot），或 `batch_runner.py` 批量。
+   - **打开/定位桌面软件**（不用命令行）：[`scripts/desktop_ops.py`](scripts/desktop_ops.py)
+     `icons` 枚举桌面图标、`open <图标名>` PostMessage 双击打开、`items <窗口>` 列资源管理器项、
+     `openitem <窗口> <项名>` 双击进入文件夹/运行程序；`windows/win` 列窗口验证。UIA 取真实屏幕坐标，
+     最小化窗口自动 SW_SHOWNOACTIVATE 恢复（不抢焦点）。
    - **浏览器（Edge/Chrome）必须用 [`scripts/browser_cdp.py`](scripts/browser_cdp.py)**：
      `open/navigate/click/clickel/type/key/scroll/eval/shot`——CDP 内核级模拟鼠标点击，
      窗口被遮挡同样生效、不碰物理光标；`eval` 可直接取页面数据（如价格），`shot` 页面级截图存证。
@@ -39,7 +47,8 @@ metadata:
      任务窗口被最小化时仅允许 `ShowWindow(SW_SHOWNOACTIVATE)` 恢复显示（不抢焦点）。
 6. **截图验证后态**：比对前后状态（`compare`）；虚拟消息被忽略且画面无变化时，**征得用户同意**
    后方可回退 [`scripts/real_input.py`](scripts/real_input.py)（SendInput）/ [`scripts/mouse_ops.py`](scripts/mouse_ops.py)。
-7. **报告**：返回操作摘要（动作、坐标、模式、前后截图路径、验证结果），最后 `hud_overlay.py hide`。
+7. **学习回写 + 报告**：成功打开/运行软件后 `learn.py put <软件名> <json>` 记录 exe 路径、启动链、
+   验证方式（下次 `get` 直接命中）；返回操作摘要（动作、坐标、模式、前后截图路径、验证结果），最后 `hud_overlay.py hide`。
 
 ## 2. 安全约束（铁律）
 
@@ -66,6 +75,9 @@ metadata:
 - 脚本以 `python <SKILL_DIR>/scripts/<name>.py` 调用，`<SKILL_DIR>` 为本 skill 安装根目录。
 - 缓存根：`%LOCALAPPDATA%\safe-mouse-automation\`（Windows；macOS/Linux 同级），env `SAFE_MOUSE_CACHE` 覆盖；
   HUD 状态在其 `hud\` 子目录，截图在 `screenshots\`。
+- **学习缓存**：`learn.py` 优先写 `<SMS_HOME>/tmp/safe-mouse-automation/learn.json`（向 SMS 临时目录开放；
+  SMS_HOME 解析 env > `%LOCALAPPDATA%\SMS`），不可写回退 `SAFE_MOUSE_CACHE/learn.json`；记录软件 exe 路径、
+  启动链、通道、验证方式，操作前 `get` 召回、成功后 `put` 回写。绝不落 skill 目录。
 - 依赖：`Pillow`（截图）、`websocket-client`（CDP 浏览器通道）、`uiautomation`（UIA 备用，实验性）；
   `pyautogui` 仅非 Windows 回退；虚拟输入/HUD 为纯标准库（ctypes/tkinter）。
 - 浏览器后台通道：`msedge --user-data-dir=<临时目录> --remote-debugging-port=<port>

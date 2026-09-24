@@ -25,6 +25,34 @@ python <SKILL_DIR>/scripts/hud_overlay.py hide                              # �
 batch_runner 每步自动 `show`，但**不再自动 hide**——由调用方在任务结束时 hide。
 浮窗置顶、点击穿透、不抢焦点；空闲 120s 显示进程自动退出。
 
+## 学习功能（操作前召回，成功后回写）
+
+```bash
+python <SKILL_DIR>/scripts/learn.py get [软件名]        # 召回已知路径/启动链（无参列出全部）
+python <SKILL_DIR>/scripts/learn.py put <软件名> @rec.json   # 回写经验（JSON 从文件读，免转义）
+python <SKILL_DIR>/scripts/learn.py note <软件名> "开始菜单是UWP，走桌面图标"   # 追加备注
+python <SKILL_DIR>/scripts/learn.py del <软件名>
+```
+
+缓存优先写 `<SMS_HOME>/tmp/safe-mouse-automation/learn.json`（向 SMS 临时目录开放，SMS_HOME 解析
+env > `%LOCALAPPDATA%\SMS`），不可写回退 `SAFE_MOUSE_CACHE/learn.json`；绝不落 skill 目录。
+记录字段建议：`exe`（绝对路径）、`launch_chain`（怎么点开的）、`channel`（用的哪个通道）、`gui`/`verified`。
+
+## 桌面软件纯鼠标通道（不用命令行启动）
+
+```bash
+python <SKILL_DIR>/scripts/desktop_ops.py windows                 # 列可见顶层窗口（验证用）
+python <SKILL_DIR>/scripts/desktop_ops.py icons                   # 枚举桌面图标 + 真实屏幕坐标
+python <SKILL_DIR>/scripts/desktop_ops.py open "此电脑"            # PostMessage 双击桌面图标
+python <SKILL_DIR>/scripts/desktop_ops.py items "Shell"           # 列资源管理器窗口内的项
+python <SKILL_DIR>/scripts/desktop_ops.py openitem "Shell" "syncthing-windows"   # 双击进入/运行
+python <SKILL_DIR>/scripts/desktop_ops.py click <hwnd> <x> <y>    # 向任意窗口 PostMessage 单击
+```
+
+UIA 取真实屏幕矩形，向目标 SysListView32 PostMessage `WM_LBUTTONDBLCLK`（不动物理光标、不抢焦点）。
+最小化的任务窗口自动 `SW_SHOWNOACTIVATE` 恢复。典型链：`open <桌面图标>` → `items <窗口>` →
+`openitem <窗口> <子项>` 逐层进入，最后 `openitem <窗口> xxx.exe` 运行，再 `learn put` 记录。
+
 ## 浏览器后台通道（Edge/Chrome 首选，抗遮挡）
 
 ```bash

@@ -1,5 +1,7 @@
 # cursorrules: safe-mouse-automation
-默认后台输入：Win32 用 PostMessage（virtual_mouse），浏览器用 CDP（browser_cdp click/clickel/type/eval/shot）。
+默认后台输入：Win32 用 PostMessage（virtual_mouse），浏览器用 CDP（browser_cdp click/clickel/type/eval/shot），
+桌面软件用 desktop_ops（icons/open/items/openitem，PostMessage 双击打开，禁命令行启动）。
+学习功能 learn.py：操作前 get 召回、成功后 put 回写，缓存放 SMS 临时目录 <SMS_HOME>/tmp/safe-mouse-automation/learn.json。
 HUD 会话全程显示（session 开始、show 每步、hide 仅结束）；置顶/穿透/不抢焦点。
 前台 SendInput 回退必须先取得用户同意；严禁为测试操作或切换用户的前台窗口；遮挡不停止任务（PrintWindow/CDP 抗遮挡）。
 所有操作过 safety_gate；删除/格式化/注册表/关机/杀命令一律拒绝；截图前后留痕；缓存只写用户缓存目录。
