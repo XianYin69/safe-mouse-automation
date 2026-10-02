@@ -16,7 +16,7 @@
 | HUD 会话浮窗 | `hud_overlay.py` | 全程任务提示 | 置顶/穿透/不抢焦点，session+step+alert 三行 |
 | 批量执行 | `batch_runner.py` | 高速多步操作 | 单进程跑完步骤清单，支持 `--guard` 每步验证门禁 |
 | 安全门禁 | `safety_gate.py` | 危险操作拦截 | 文件删除/格式化/注册表/关机/杀命令一律拒绝 |
-| 截图验证 | `screenshot_verify.py` | 前后态比对 | PrintWindow 抗遮挡截图 + 像素差异比对 |
+| 截图与视觉验证 | `screenshot_verify.py` | 前后态比对 / 看懂画面 | 纯委托 `screen-vision`（`sw.py` 截取 / `describe.py` 像素统计比对 / `recognize.py` 视觉识别） |
 | 前台回退 | `real_input.py` | 应用忽略虚拟消息时 | SendInput 真输入，**须先征得用户同意** |
 
 ## 安装
@@ -42,10 +42,12 @@ python scripts/human_gate.py web --port=9224 --match=example
 # 4. 提取页面数据
 python scripts/browser_cdp.py --port=9224 --match=example eval "document.title"
 
-# 5. 截图验证
-python scripts/screenshot_verify.py capture before
-python scripts/screenshot_verify.py window "窗口标题" after
-python scripts/screenshot_verify.py compare <before> <after>
+# 5. 截图与视觉验证（委托 screen-vision）
+python scripts/screenshot_verify.py window "窗口标题" before   # → sw.py capture --title
+python scripts/screenshot_verify.py window "窗口标题" after    # 全屏抓取已废除，用 window 指定目标
+python scripts/screenshot_verify.py compare <before> <after>   # → describe.py 像素统计数值比对
+python scripts/screenshot_verify.py ask "窗口标题" "当前有没有报错弹窗"   # → recognize.py ask
+python scripts/screenshot_verify.py objects "窗口标题"        # → ask --structured（含 screen_xy 可点坐标）
 
 # 6. 学习回写 + 结束
 python scripts/learn.py put example '{"exe":"...","launch_chain":"...","channel":"cdp"}'
@@ -69,9 +71,13 @@ python scripts/hud_overlay.py hide
 
 ## 依赖
 
-- `Pillow`（截图）、`uiautomation`（UIA 桌面操作）、`websocket-client`（CDP 浏览器通道）
+- **技能级依赖 `screen-vision`**（必需）：窗口枚举/截取/视觉识别/像素统计——`screenshot_verify.py`
+  的全部视觉能力委托它，本技能已废除自研 PrintWindow 抓窗口与像素比对。路径解析
+  env `SCREEN_VISION_HOME` > `~/.kilocode/skills/screen-vision`；**缺失只报错（exit 1），不自动安装**。
+  清单见 [`dependence/dependence.md`](dependence/dependence.md)。
+- `uiautomation`（UIA 桌面操作）、`websocket-client`（CDP 浏览器通道）
 - `pyautogui`（仅非 Windows 平台回退）
-- 虚拟输入/HUD 为纯标准库（ctypes/tkinter）
+- 虚拟输入/HUD 为纯标准库（ctypes/tkinter）；`Pillow` 由 screen-vision 侧使用，本技能脚本不再直接依赖
 
 ## License
 

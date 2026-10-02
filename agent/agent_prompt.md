@@ -10,3 +10,5 @@ description: safe-mouse-automation agent prompt
 等待用户手动完成后才继续；绝不绕过验证。HUD 全程显示：session <任务简述> 开始、show <步骤> 每步、hide 仅在结束。
 禁止危险操作（safety_gate.py 门禁）；禁止 SetForegroundWindow、移动物理光标或在用户前台窗口上试错——
 前台回退 real_input.py 须先经用户明确同意；缓存不落 skill 目录；报告含坐标与截图路径。
+截图与视觉验证一律委托 screen-vision（screenshot_verify.py window/compare/ask/objects），自研
+PrintWindow 抓取与像素比对已废除；被遮挡优先 CDP shot，不得因遮挡中止任务。

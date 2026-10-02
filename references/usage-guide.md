@@ -135,16 +135,28 @@ python <SKILL_DIR>/scripts/real_input.py key "ctrl+s"
 `mouse_ops.py` 提供同命令并自动回退 pyautogui（非 Windows）。开发与自动化测试禁止使用前台通道，
 应在自有隔离窗口（隐藏/offscreen 父窗口 + 标准控件）内用 PostMessage 直接验证。
 
-## 抗遮挡截图验证
+## 截图与视觉验证（委托 screen-vision）
+
+`screenshot_verify.py` 现为**纯委托层**：不含任何自研视觉代码，一律调 screen-vision 的脚本
+（`sw.py` 截取 / `describe.py` 像素统计 / `recognize.py` 视觉识别）。旧自研 PrintWindow 抓窗口、
+像素直方图比对、全屏抓取**均已废除**。
 
 ```bash
-python <SKILL_DIR>/scripts/screenshot_verify.py capture before          # 全屏
-python <SKILL_DIR>/scripts/screenshot_verify.py window "无标题 - 记事本" t1   # PrintWindow 抓指定窗口
-python <SKILL_DIR>/scripts/screenshot_verify.py compare <a> <b>
+python <SKILL_DIR>/scripts/screenshot_verify.py window "无标题 - 记事本" t1   # → sw.py capture --title
+python <SKILL_DIR>/scripts/screenshot_verify.py capture t0                 # → 顶层窗口（全屏已废除）
+python <SKILL_DIR>/scripts/screenshot_verify.py compare <a> <b> [阈值]      # → describe.py 像素统计数值比对
+python <SKILL_DIR>/scripts/screenshot_verify.py ask "无标题 - 记事本" "输入框里是什么"  # → recognize.py ask
+python <SKILL_DIR>/scripts/screenshot_verify.py objects "无标题 - 记事本"   # → ask --structured
+python <SKILL_DIR>/scripts/screenshot_verify.py dir
 ```
 
-`window` 用 PrintWindow 抓目标窗口——被遮挡/不在前台也能截到其内容；任务窗口被最小化时
-先 `browser_ops.py restore` 或 ShowWindow(SW_SHOWNOACTIVATE) 恢复（不激活、不抢焦点）。
+遮挡语义（务必知悉）：screen-vision 截的是**屏幕矩形像素**，窗口被遮挡时会把遮挡内容一起截进来，
+它**没有全屏截取模式**；被遮挡时优先用 `browser_cdp.py shot`（页面级抗遮挡），或先
+`browser_ops.py restore` / ShowWindow(SW_SHOWNOACTIVATE) 恢复窗口再截（不激活、不抢焦点），
+也可改用 UIA / `eval` 取非像素证据——**不得因遮挡中止任务**。
+`compare` 只做算术胶水：取 `describe.py` 的 mean_rgb / 灰度均值 / 标准差 / 8 分箱算归一化数值距离。
+`objects`（契约 v2）里每个元素的 `screen_xy` 是屏幕物理像素绝对坐标，可直接喂 `virtual_mouse` 点击。
+screen-vision 缺失时只报错（exit 1）并提示设 `SCREEN_VISION_HOME`，本技能不自动安装、不回退自研。
 
 ## 与其他技能集成 / 注意事项
 

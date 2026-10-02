@@ -11,6 +11,7 @@ Win32 应用用 virtual_mouse.py（PostMessage），浏览器用 browser_cdp.py�
 **真人验证门禁 human_gate.py**：检测到验证码/登录墙/人机验证时立即停止任务，HUD 显示红色⚠告警
 （类型/证据/需用户操作），等待用户手动完成后才继续；绝不尝试绕过验证。
 HUD 会话必须全程显示：任务开始 session <简述>，每步 show <步骤>，任务结束才 hide。
-验证用 screenshot_verify.py window（PrintWindow 抗遮挡）或 CDP shot；窗口被最小化只允许
-SW_SHOWNOACTIVATE 恢复。危险操作一律经 safety_gate 拒绝；禁止 SetForegroundWindow/前台试错；
+验证用 screenshot_verify.py window <标题子串>（委托 screen-vision 截屏幕矩形，被遮挡会截进遮挡内容）
+或 CDP shot（页面级抗遮挡，被遮挡时优先）；要看懂画面用 ask / objects（契约 v2 的 screen_xy 可直接点击）；
+窗口被最小化只允许 SW_SHOWNOACTIVATE 恢复。危险操作一律经 safety_gate 拒绝；禁止 SetForegroundWindow/前台试错；
 前台 SendInput（real_input.py/--real）仅经用户明确同意后使用。

@@ -6,7 +6,8 @@ description: >
   浏览器走 CDP 内核级模拟点击、桌面软件走 desktop_ops 纯鼠标双击（枚举桌面图标/资源管理器项，
   不用命令行启动）；学习功能 learn 把软件路径/启动链沉淀到 SMS 临时目录，操作前召回成功后回写；
   HUD 浮窗全程置顶提示任务信息（置顶/穿透/不抢焦点）；SendInput 前台真输入为征得同意后的回退；
-  批量执行加快整体流程；内置安全门禁禁止危险操作，缓存不落 skill 目录。
+  批量执行加快整体流程；内置安全门禁禁止危险操作，缓存不落 skill 目录；屏幕视觉（窗口枚举/
+  截取/视觉识别/像素统计）一律委托 screen-vision 技能，本技能不含自研视觉实现。
 license: MIT
 metadata:
   category: automation
@@ -33,8 +34,10 @@ SMS 临时目录，操作前召回免重复探索）、**真人验证门禁**（
    危险操作（文件删除、系统修改、注册表写入、任意 shell 命令）一律拒绝并报告用户。
 3. **HUD 会话开启**：任务开始即 `hud_overlay.py session <任务简述> [ttl]`（默认 30 分钟，全程常显）；
    每步 `hud_overlay.py show <步骤>` 更新第二行；**仅任务整体结束才 `hide`**（batch_runner 不再自动隐藏）。
-4. **截图记录前态**：[`scripts/screenshot_verify.py`](scripts/screenshot_verify.py) `capture` 全屏或
-   `window <标题子串>` PrintWindow 抓目标窗口（被遮挡/非前台同样可截）。
+4. **截图记录前态**：[`scripts/screenshot_verify.py`](scripts/screenshot_verify.py) 现为**纯委托层**
+   （内部调 screen-vision，无自研视觉）：`window <标题子串> [label]` 抓指定窗口（→ `sw.py capture --title`）、
+   `capture [label]` 抓 z-order 顶层窗口（→ `sw.py capture --index`，**全屏抓取已废除**，要指定目标用 `window`）。
+   浏览器仍用 `browser_cdp.py shot`（页面级截图，抗遮挡）。
 5. **后台执行操作**：
    - 桌面 Win32 应用输入：[`scripts/virtual_mouse.py`](scripts/virtual_mouse.py) 点击/滚轮/拖拽/打字/快捷键
      （op: click/scroll/drag/move/type/key/shot），或 `batch_runner.py` 批量。
@@ -54,8 +57,12 @@ SMS 临时目录，操作前召回免重复探索）、**真人验证门禁**（
      每步自动检测，命中即中止。**绝不尝试绕过验证。**
    - **禁止**自行调用 `SetForegroundWindow`、移动物理光标或操作焦点窗口；
      任务窗口被最小化时仅允许 `ShowWindow(SW_SHOWNOACTIVATE)` 恢复显示（不抢焦点）。
-6. **截图验证后态**：比对前后状态（`compare`）；虚拟消息被忽略且画面无变化时，**征得用户同意**
-   后方可回退 [`scripts/real_input.py`](scripts/real_input.py)（SendInput）/ [`scripts/mouse_ops.py`](scripts/mouse_ops.py)。
+6. **截图验证后态**：`compare <a> <b>` 比对前后状态——委托 screen-vision `describe.py` 的像素通道统计
+   （mean_rgb / 灰度均值 / 标准差 / 8 分箱）算归一化数值距离，本层只做算术胶水；要看懂画面用
+   `ask <窗口|图片> <问题>`（→ `recognize.py ask`）、`objects <窗口|图片>`（→ `ask --structured`，
+   契约 v2 的 `screen_xy` 是屏幕物理像素绝对坐标，可直接喂 `virtual_mouse` 点击）。
+   虚拟消息被忽略且画面无变化时，**征得用户同意**后方可回退 [`scripts/real_input.py`](scripts/real_input.py)
+   （SendInput）/ [`scripts/mouse_ops.py`](scripts/mouse_ops.py)。
 7. **学习回写 + 报告**：成功操作软件后 `learn.py put <软件名> <json>` 记录 exe 路径、启动链、
    控件名/菜单路径（`learn.py op <软件名> <动作> <json>` 记录单个操作），下次 `get` 直接命中；
    返回操作摘要（动作、坐标、模式、前后截图路径、验证结果），最后 `hud_overlay.py hide`。
@@ -67,8 +74,10 @@ SMS 临时目录，操作前召回免重复探索）、**真人验证门禁**（
   需用户操作），等待用户手动完成后才继续；**绝不尝试绕过、破解或自动提交验证**。
 - **后台优先**：一切输入/截图默认走 PostMessage/CDP/UIA/WM_COMMAND 后台通道；**任何情况下不得**自行
   `SetForegroundWindow`、移动物理光标、切换焦点或在用户前台窗口上执行测试。
-- **遮挡不停止**：用户随时可能盖住任务窗口——验证一律用 PrintWindow/CDP shot（抗遮挡），
-  交互一律用 PostMessage/UIA/CDP（不需要前台）；不得因窗口被遮挡而中止任务。
+- **遮挡不停止**：用户随时可能盖住任务窗口——screen-vision 截的是**屏幕矩形像素**（非旧自研的窗口 DC
+  渲染抓取），被遮挡会把遮挡内容一起截进来；因此被遮挡时**优先用 CDP shot**（页面级抗遮挡），或先
+  `ShowWindow(SW_SHOWNOACTIVATE)` 恢复窗口再截，或改用 UIA / `eval` 等非像素通道取证据；
+  交互一律用 PostMessage/UIA/CDP（不需要前台）；**不得因窗口被遮挡而中止任务**。
 - **前台需同意**：仅当虚拟消息被目标应用忽略且截图验证无变化时，先征得用户同意，
   才可用 `real_input.py`（SendInput）前台回退；测试与验证一律用自有隔离窗口进行。
 - **用户确认**：涉及修改性操作（如拖拽文件到回收站、右键菜单选择删除项）前必须请求用户确认。
@@ -90,8 +99,13 @@ SMS 临时目录，操作前召回免重复探索）、**真人验证门禁**（
 - **学习缓存**：`learn.py` 优先写 `<SMS_HOME>/tmp/safe-mouse-automation/learn.json`（向 SMS 临时目录开放；
   SMS_HOME 解析 env > `%LOCALAPPDATA%\SMS`），不可写回退 `SAFE_MOUSE_CACHE/learn.json`；记录软件 exe 路径、
   启动链、通道、验证方式，操作前 `get` 召回、成功后 `put` 回写。绝不落 skill 目录。
-- 依赖：`Pillow`（截图）、`websocket-client`（CDP 浏览器通道）、`uiautomation`（UIA 备用，实验性）；
-  `pyautogui` 仅非 Windows 回退；虚拟输入/HUD 为纯标准库（ctypes/tkinter）。
+- **技能级依赖 `screen-vision`**（窗口枚举/截取/视觉识别/像素统计，清单见
+  [`dependence/dependence.md`](dependence/dependence.md)）：`screenshot_verify.py` 的全部视觉能力委托它，
+  路径解析 env `SCREEN_VISION_HOME`（可指技能根或 `scripts`）> `~/.kilocode/skills/screen-vision`；
+  **缺失只报错（exit 1），绝不自动安装、绝不回退自研实现**；自研 PrintWindow 抓窗口与像素直方图
+  比对**已废除**（screen-vision 截屏幕矩形像素，被遮挡会截进遮挡内容，无全屏模式）。
+- 依赖：`websocket-client`（CDP 浏览器通道）、`uiautomation`（UIA 桌面操作）、`pyautogui`（仅非 Windows
+  回退）；虚拟输入/HUD 为纯标准库（ctypes/tkinter）；`Pillow` 现由 screen-vision 侧使用，本技能脚本不再直接依赖。
 - 浏览器后台通道：`msedge --user-data-dir=<临时目录> --remote-debugging-port=<port>
   --remote-allow-origins=* --no-first-run <url>`（`browser_cdp.py open` 自动执行；
   标志必须带，否则 Edge 进程复用/WS 拒绝导致失败）。

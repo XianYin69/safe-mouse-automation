@@ -8,6 +8,7 @@ description: safe-mouse-automation for Claude
 零鼠标执行），学习功能 learn.py 把软件路径/启动链/控件名/菜单路径沉淀到 SMS 临时目录（get 召回、put/op 回写）。
 真人验证门禁 human_gate.py：检测到验证码/登录墙立即停止任务，HUD 显示红色⚠告警（类型/证据/需用户操作），
 等待用户手动完成后才继续；绝不绕过验证。HUD 会话全程显示任务简述+步骤，批量执行加速。
-先过 safety_gate，后台截图验证用 screenshot_verify window（PrintWindow）或 CDP shot；
+先过 safety_gate，截图验证用 screenshot_verify window（委托 screen-vision 截屏幕矩形，被遮挡会截进遮挡内容）
+或 CDP shot（被遮挡时优先）；自研 PrintWindow 抓取已废除；
 仅当应用忽略虚拟消息且用户明确同意后才回退 real_input（SendInput）前台方式；
 严禁为测试改动用户前台窗口；任务结束 hud hide。

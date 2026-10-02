@@ -1,0 +1,58 @@
+{
+  "dependencies": [
+    {
+      "name": "screen-vision",
+      "type": "skill",
+      "source": "local_skill",
+      "path": "~/.kilocode/skills/screen-vision",
+      "required": true,
+      "entry": ["scripts/sw.py", "scripts/recognize.py", "scripts/describe.py"],
+      "used_for": "窗口枚举/截取/视觉识别/像素统计",
+      "install": "SMS 技能注册表安装，本技能不自动装",
+      "path_override_env": "SCREEN_VISION_HOME",
+      "missing_behavior": "报错 {\"error\": \"screen-vision 未安装或路径不对，请设 SCREEN_VISION_HOME\"} 且 exit 1；不自动安装、不回退自研实现",
+      "checked_at": "2026-10-02T23:15"
+    },
+    {
+      "name": "websocket-client",
+      "type": "software",
+      "source_url_status": "unverified", "source_url": "https://github.com/websocket-client/websocket-client",
+      "license": "Apache-2.0",
+      "version": "1.9.2",
+      "install": "pip install websocket-client",
+      "used_for": "browser_cdp.py CDP 浏览器通道",
+      "checked_at": "2026-10-02T23:15"
+    },
+    {
+      "name": "uiautomation",
+      "type": "software",
+      "source_url_status": "unverified", "source_url": "https://github.com/yinkaisheng/Python-UIAutomation-for-Windows",
+      "license": "MIT",
+      "version": "2.0.29",
+      "install": "pip install uiautomation",
+      "used_for": "app_ops/desktop_ops/browser_ops/human_gate 的 UIA 枚举与操作",
+      "checked_at": "2026-10-02T23:15"
+    },
+    {
+      "name": "pyautogui",
+      "type": "software",
+      "source_url_status": "unverified", "source_url": "https://github.com/asweigart/pyautogui",
+      "license": "BSD-3-Clause",
+      "version": "0.9.54",
+      "install": "pip install pyautogui",
+      "used_for": "mouse_ops.py 非 Windows 平台回退（Windows 上不需要）",
+      "checked_at": "2026-10-02T23:15"
+    },
+    {
+      "name": "pillow",
+      "type": "software",
+      "source_url_status": "unverified", "source_url": "https://github.com/python-pillow/Pillow",
+      "license": "HPND",
+      "version": "12.3.0",
+      "install": "由 screen-vision 侧依赖，本技能脚本不再直接 import",
+      "used_for": "screen-vision 截取与像素统计（间接依赖）",
+      "required": false,
+      "checked_at": "2026-10-02T23:15"
+    }
+  ]
+}
