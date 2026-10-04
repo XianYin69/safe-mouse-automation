@@ -1,5 +1,6 @@
 ---
 name: safe-mouse-automation
+version: 0.1.0
 description: >
   通过 Python 脚本在后台模拟鼠标与键盘操作用户电脑，截图确认操作结果；一切动作经**统一输入后端**
   input_ops.py 发出合成事件（Win32＝PostMessage 鼠标/键盘，浏览器＝CDP Input.dispatch*），
