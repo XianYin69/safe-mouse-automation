@@ -245,6 +245,76 @@ python <SKILL_DIR>/scripts/screenshot_verify.py dir
 `objects`（契约 v2）里每个元素的 `screen_xy` 是屏幕物理像素绝对坐标，可直接喂 `virtual_mouse` 点击。
 screen-vision 缺失时只报错（exit 1）并提示设 `SCREEN_VISION_HOME`，本技能不自动安装、不回退自研。
 
+## 组合键注入（keycombo / real_input / mouse_ops·成对 down/up 红线）
+
+**红线：注入必须成对 down/up。** 修饰键（Ctrl/Alt/Shift/Win）一旦发出 `KEYDOWN` 就**必须**在同一条
+代码路径里发出配对的 `KEYUP`——只发 down 不补 up 会让用户键盘**像被重映射**（打字全变快捷键、
+点击变拖拽），且用户自己无法自救。`real_input.press_keys` 为此有四道机制，缺一不可：
+
+| 机制 | 实现 | 作用 |
+|------|------|------|
+| A 原子批 | `_fire_many` 一次 `SendInput` 发完整序列 `mods down → vk down → vk up → mods up 逆序` | 把「发了 down 没发 up」的窗口压到最小；硬杀（TerminateProcess）不跑回调，故这是**根治**手段 |
+| B try/finally | `finally: _release_held(mods)`；`release_all_modifiers(dry=, keys=)` | 半批/异常路径补发仍未抬起的修饰键；`release` 命令即「救回用户键盘」 |
+| C 前置守卫 | `released_stuck()` / `_pre_guard()`（`GetAsyncKeyState` 只读） | 注入**前**检出「非本进程发起」的粘滞修饰键，先释放再放行 |
+| D 退出兜底 | `_install_exit_guards()`：`atexit` + `SIGINT/SIGTERM/SIGBREAK` | 退出/中断前释放本进程欠下的 KEYUP；只认 HELD 记账，**绝不**释放别人按下的键 |
+HELD 记账：`_OUTSTANDING`＝本进程「已按下、尚未确认抬起」的修饰 vk，`_INJECTED_ANY`＝本进程是否发过
+键盘事件；本进程从未注入过则退出兜底**完全不碰键盘**。右侧/扩展键（alt_r/ctrl_r/win_l/win_r/shift_r）
+的 `KEYUP` 必须带 `KEXT`，否则释放不掉。用户自己正物理按住 Ctrl 时可设
+env `SAFE_MOUSE_SKIP_STICK_GUARD=1` 跳过前置守卫（否则会把它当粘滞残留释放掉）。
+
+`keycombo.py` 是**门面**：不含任何键表与解析逻辑，`MODS/BASE/SHIFT_NEEDED/MOD_KEYS/parse_combo/
+vk_of/stuck_modifiers/release_all_modifiers/released_stuck` 全部**转发**自 `real_input`（唯一实现，
+防两处逻辑漂移；`virtual_mouse.py` 亦经 `real_input.parse_combo` 共用同一解析）。
+
+```bash
+# 门面（默认零注入；release 例外，见下）
+python <SKILL_DIR>/scripts/keycombo.py parse ctrl+shift+s   # 只读：down/up 计划 + 配对不变式
+python <SKILL_DIR>/scripts/keycombo.py stuck                # 只读取证：当前按下态修饰键
+python <SKILL_DIR>/scripts/keycombo.py release --dry        # 只报告 would_release（零注入）
+python <SKILL_DIR>/scripts/keycombo.py release --yes    # 真补 KEYUP（前台 SendInput，须同意）
+python <SKILL_DIR>/scripts/keycombo.py check                # 跨 real/virtual 干跑自检（零注入）
+# 真注入（前台通道·须先征得用户同意）
+python <SKILL_DIR>/scripts/real_input.py key "ctrl+shift+s"        # 原子批 + finally + 前置守卫
+python <SKILL_DIR>/scripts/real_input.py key "ctrl+shift+s" --dry  # 只打印计划，injected=0
+python <SKILL_DIR>/scripts/real_input.py key --release-all         # 全量补 up（不带组合键名）
+python <SKILL_DIR>/scripts/real_input.py key --release-all --dry   # 只看 would_release 清单
+python <SKILL_DIR>/scripts/real_input.py release [--dry]           # 同 release_all_modifiers
+python <SKILL_DIR>/scripts/real_input.py mods                      # 只读按下态（零注入）
+python <SKILL_DIR>/scripts/mouse_ops.py key "ctrl+s" [--dry]       # 透传：危险词门禁 + 委托 real_input
+python <SKILL_DIR>/scripts/mouse_ops.py key --release-all [--dry]
+python <SKILL_DIR>/scripts/mouse_ops.py release [--dry]            # 透传 release_all_modifiers
+python <SKILL_DIR>/scripts/mouse_ops.py mods
+```
+
+**`--dry` 语义**：只读干跑——`injected=0`、不跑前置守卫、不碰用户键盘，打印的就是将要注入的序列
+（down/up 计划与注入端**同源**，防「打印对、注入错」）。`check` 全绿＝两后端配对不变式成立且零注入。
+**粘滞自救三步**（用户反馈「键盘像被重映射 / 快捷键乱触发 / 点图标变成拖拽」时）：
+① `keycombo.py stuck`（或 `real_input.py mods`）**只读**确认哪些修饰键停在按下态；
+② `keycombo.py release --dry` 看 `would_release` 清单，确认要补的是哪几个键；
+③ **征得用户同意**后 `keycombo.py release --yes` 一次原子批补 `KEYUP`——补 up 属前台 SendInput，
+**不得**未经同意默认执行；若清单里的键是用户**正物理按住**的，带 env
+`SAFE_MOUSE_SKIP_STICK_GUARD=1` 或改由用户松手，别抢着释放。
+
+**回归自检**：`python <SKILL_DIR>/scripts/keycombo.py check` 断言 11 例组合键
+（含 `ctrl+alt+del` / `ctrl+=` / `win+d` / `ctrl+alt+shift+f12`）在 real 与 virtual 两后端
+`paired=true`、`planned_real == planned_virtual`、`injected=0`，失败 exit 1；
+与 `safety_gate.py focus-audit` 一样属改动后必跑项。
+
+**`keycombo.py release` 的门禁（代码即文档）**：默认**只读**（等价 `--dry`，回报 `would_release`、
+`injected:0`、`mode:"read-only"`）；**不带 `--yes` 一律不注入**，并回 `refused:"consent"` 与提示。
+真释放须 `release --yes`（只补 KEYUP、**绝不**发 keydown，`keydown_sent:0` 恒成立），
+`--scope=owned` 只还本进程在册键。脚本化调用一律**先 `--dry` 看清单、再经用户同意 `--yes`**。
+
+**virtual 通道同样有守卫与成对兜底（R6 补充）**：`virtual_mouse.py key x y <combo> [--dry]` 注入前跑
+`_release_stuck_in_window(h)`（只向**目标窗口** PostMessage 配对 KUP，**绝不** SendInput 物理注入，守 R3），
+回报 `released_stuck`；投递失败由 `_post(..., cleanup=_kbd_release_pairs)` 按已投前缀补发全部 KUP；
+`hwnd` 无效/已销毁**早退**并回报 `injected:0` + `reason:"hwnd 无效/已销毁 …（未注入任何按键）"`；
+CLI 另有 `mods`（只读按下态）与 `release <hwnd> [--dry]`。
+`real_input.py` 的 `--release-all` 是**全局**开关：`key` 子命令＝只释放不注入，其它子命令＝动作后
+附带清粘滞（配 `--dry` 则纯只读）。粘滞探测表 `MOD_KEYS` 含 `0x5D apps`（共 12 键），
+`MONITOR_VKS` 由它派生；`finally` 的兜底释放走 `_safe_release_keys()`，**绝不让释放动作二次抛错**
+掩盖 SendInput 的原始异常。
+
 ## 与其他技能集成 / 注意事项
 
 - 单一动作后端：PostMessage 合成鼠标/键盘（Win32）与 CDP `Input.dispatch*`（浏览器）；UIA **只读**定位；

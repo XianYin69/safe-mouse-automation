@@ -1,5 +1,79 @@
 # CHANGELOG
 
+## 2026-10-04 — R6 补充（同域第二会话）：错误掩盖、扩展码表统一、virtual 前置守卫、文档纠偏
+
+与另一会话并行修「注入后 Ctrl+Alt 粘滞」。**先冲突再收敛**：本会话按清单改造
+`real_input.py`/`virtual_mouse.py` 时 span 探测到文件已被对方重写（110→304 行），
+立即用备份 `tmp\bak\` 还原对方版本（**绝不回退已有代码**），此后只做增量。
+- **错误掩盖缺陷（实测发现）**：`press_keys` 的 `finally` 里 `release_all_modifiers(keys=remaining)`
+  与前置 `_pre_guard()` 均无 try 包裹——注入失败时兜底动作二次抛错，既掩盖 `SendInput` 的原始异常，
+  又使后续 `_unmark_held` 不执行（在册键残留）。→ 新增 `_safe_release_keys()`（释放动作绝不上抛），
+  守卫故障降级放行并留 `guard_error`。
+- **扩展码两处漂移**：real 通道用 `keycombo.EXTENDED_KEYS`（缺 `0x28 down`/`0x5B win_l`），
+  virtual 通道 `_klp` 用内联表（有）→ 同一个键在两后端的 KEYUP 扩展码判定不一致。
+  → `EXTENDED_KEYS` 补 `0x5B/0x28/0x2C/0x6F`，`_klp` 改调 `keycombo.is_extended()`，全技能只剩一张表。
+- **virtual 通道缺注入前守卫**：新增 `_release_stuck_in_window(h)`（只向**目标窗口** PostMessage 配对
+  KUP，**绝不** SendInput 物理注入，守 R3）；`key_combo` 对 `hwnd` 无效/已销毁**早退**并明确
+  `injected:0` +「未注入任何按键」；CLI 补 `mods`（只读）与 `release <hwnd> [--dry]`。
+- **探测范围补齐**：`MOD_KEYS` 增 `0x5D apps`（共 12 键，`MONITOR_VKS` 由它派生）；`BASE` 增 `del`
+  别名（`ctrl+alt+del` 此前直接解析失败）；`--release-all` 由「只在 key 分支」提升为**全局**开关。
+- **文档纠偏**：`usage-guide.md` 原写「`keycombo.py release` 默认即真注入、代码无 `--yes`」——与代码
+  相反（默认只读、`--yes` 才释放、`keydown_sent:0` 恒成立），按实际行为改写；`check` 用例由 7 例
+  补齐为文档承诺的 11 例。
+- **验收（全程零按键注入）**：`keycombo.py check` 11/11 `paired:true`；`safety_gate.py focus-audit`
+  `ok:true / violations:0`；把 `SendInput`/`PostMessageW` 换成记录器后跑完 `press_keys` **真实非 dry
+  路径**（含返回 0 与抛异常两种失败分支）→ 主批 down/up 严格配对、失败路径仍补发 KEYUP、
+  `real_fire_calls:0 / virtual_posts:0`；`hud_overlay.py procs` 收口后 HUD 进程数 0。
+
+## 2026-10-04 — R6：组合键注入必须成对 down/up（新增 `scripts/keycombo.py` + `real_input` 原子批修复）
+
+- **症状**：注入只发 down 未补 up——Ctrl/Alt 停在**按下态**，用户键盘像被重映射（打字全变快捷键、
+  点东西变成拖拽），且**没有任何路径**替它补 KEYUP；同时 `real_input.press_keys` 把
+  `sh = vk in {...}` 写进 `if vk is None: return ...` 的**同一 if 套件**，vk 有效时 `sh` 永不绑定
+  → 任何**合法**组合键直接 `NameError`，异常抛出时已按下的修饰键就永久悬空（两个缺陷叠加）。
+- **修法 A＝原子批（根治）**：整条组合键构造成一个 INPUT 序列
+  （`mods down → vk down → vk up → mods up 逆序`），经 `_fire_many` **一次** `SendInput` 发出，
+  批内不 sleep，把「发了 down 还没发 up」的窗口压到最小；`SendInput` 返回 0 判失败并报告
+  （UIPI 拦截/桌面已切换）。硬杀（TerminateProcess）不执行任何回调，所以原子批才是根治、兜底只是兜底。
+- **修法 B＝try/finally 补 up + 救回键盘**：`press_keys` 注入包在 try 里，`finally` 调
+  `_release_held(mods)` 只补发**仍未抬起**的修饰键（成功路径通常为空＝零额外注入）；
+  `release_all_modifiers(dry=, keys=)` 用 `GetAsyncKeyState` 只读检出按下态修饰键后
+  **一次原子批**补 KEYUP，`dry=True` 只回报 `would_release` 零注入；
+  右侧/扩展键（`_EXTENDED`＝alt_r/ctrl_r/win_l/win_r/shift_r）KEYUP 必须带 `KEXT`，否则释放不掉。
+- **修法 C＝前置守卫 `released_stuck()`**：每次真注入**之前**先 `_pre_guard()`——
+  `GetAsyncKeyState` 检出「非本进程发起」的粘滞修饰键就**先释放再放行注入**，
+  回报 `released_stuck`；用户自己正物理按住 Ctrl 时可设 env `SAFE_MOUSE_SKIP_STICK_GUARD=1` 跳过；
+  守卫自身故障**降级放行**（`guard_error`）不阻断注入。
+- **修法 D＝退出兜底 `_install_exit_guards()`**：`atexit` + `SIGINT/SIGTERM/SIGBREAK` 三处挂钩，
+  退出/中断前 `_exit_release()` 强制释放本进程欠下的 KEYUP；SIGINT 释放后仍抛 `KeyboardInterrupt`
+  （语义不变）、其余信号 `SystemExit(128+n)`；非主线程注册失败静默忽略。
+- **HELD 记账**：`_OUTSTANDING`＝本进程「已按下、尚未确认抬起」的修饰 vk，`_INJECTED_ANY`＝本进程
+  是否发过键盘事件；两者共同保证**只释放自己按下的键**（从未注入则完全不碰键盘，绝不误伤用户），
+  批发完/兜底后即时清账；`release_all_modifiers` 也会把已释放的 vk 从账上摘掉。
+- **新增 `scripts/keycombo.py`（组合键门面 + 跨后端干跑自检）**：**不含**任何键表与解析逻辑——
+  `MODS/BASE/SHIFT_NEEDED/MOD_KEYS/_EXTENDED/parse_combo/vk_of/stuck_modifiers/release_all_modifiers/
+  released_stuck` 全部**转发**自 `real_input`（唯一实现，防两处逻辑漂移；`virtual_mouse` 亦经
+  `real_input.parse_combo` 共用同一解析）。CLI：`parse <combo>`（打印 down/up 计划与配对不变式）、
+  `stuck`（只读取证）、`release [--dry]`（补 up 救回键盘）、`check`（11 例跨 real/virtual 干跑，
+  断言 down/up 严格配对、`planned` 数相等、`injected=0`，零注入，失败 exit 1）。
+- **`mouse_ops.py` 透传修复**：`press_keys(combo, dry=)` 的 Windows 路径改为**委托**
+  `real_input.press_keys`——原子批 / `finally` 补发 / 前置守卫 / `atexit`+signal 兜底**全部继承**，
+  本层只加危险关键词门禁；`dry=True` 复用同一 `parse_combo`（零注入）；
+  CLI 补 `key <ctrl+s> [--dry]`、`key --release-all [--dry]`、`release [--dry]`、`mods`（只读）。
+  `real_input.py` CLI 同步：`key`/`key --release-all`/`release`/`mods` 均认 `--dry`。
+- **文档**：`references/usage-guide.md` 新增「组合键注入（成对 down/up 红线）」一节
+  （`key`/`release`/`--release-all`/`--dry` 用法、粘滞自救三步、`check` 干跑自检）；
+  `SKILL.md` 索引补 `keycombo.py` 一行。
+- **验收（本次实测·零注入）**：`keycombo.py check` → `ok:true / failed:0 / injection_allowed:false`，
+  11 例（含 `ctrl+alt+del`、`ctrl+shift+s`、`ctrl+=`、`win+d`、`ctrl+alt+shift+f12`）
+  `paired` 全真、`planned_real == planned_virtual`（4/6/8）、`injected:[0,0]`；
+  `keycombo.py parse ctrl+shift+s` → `down:[ctrl,shift,83] / up:[83,shift,ctrl] / n_down==n_up==3`；
+  `keycombo.py release --dry` → `checked:11 / would_release:[ctrl,ctrl_l,alt,alt_l] / injected:0`。
+- **遗留（如实报告，不改代码）**：① `check` 当时 `GetAsyncKeyState` 报 Ctrl/Alt 仍处按下态
+  （历史事故残留或用户物理按住）——真释放属前台 SendInput，**须用户同意**后才跑
+  `keycombo.py release`，本次只跑 `--dry`；② `keycombo.py` 的 help 串写 `release [--yes] [--dry]`
+  而代码无 `--yes` 分支（`release` 默认即真注入），文档按**代码实际行为**记录，待后续对齐。
+
 ## 2026-10-03 — R5：attach 真实浏览器取文本链路打通（clip_ops + grab + dump 空树修复）
 
 - **实测根因（dump 返回 `elements=[]`）**：Edge 窗口下有 6 个 `DocumentControl`，前 5 个 `Name` 为空、

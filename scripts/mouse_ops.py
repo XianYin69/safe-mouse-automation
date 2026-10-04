@@ -59,10 +59,27 @@ def type_text(text):
     chk = check_safety("type " + text)
     return real_input.type_text(text) if chk["allowed"] else chk
 
-def press_keys(combo):
+def press_keys(combo, dry=False):
+    """F：Windows 路径委托 real_input.press_keys——原子批 / try-finally 补发 /
+    前置守卫 / atexit+signal 兜底全部继承，本层只加危险关键词门禁。"""
     chk = check_safety("key " + combo)
     if not chk["allowed"]: return chk
-    return real_input.press_keys(combo) if real_input.IS_WIN else _pa("hotkey", *[p.strip() for p in combo.split("+")])
+    if dry:                                      # 只读干跑：复用同一解析，零注入
+        p = real_input.parse_combo(combo)
+        return {"ok": p["ok"], "action": "key", "combo": combo, "mode": "real",
+                "dry": True, "injected": 0, "mods": p["mods"], "vk": p["vk"],
+                "shift": p["shift"], "reason": p.get("reason", "")}
+    if not real_input.IS_WIN:
+        return _pa("hotkey", *[p.strip() for p in combo.split("+")])
+    return real_input.press_keys(combo)          # 原子批/finally/守卫/atexit 全继承
+
+def release_all_modifiers(dry=False):
+    """B：救回用户键盘——对仍处于按下态的修饰键补发 KEYUP（dry=True 只报告不注入）。"""
+    return real_input.release_all_modifiers(dry=dry)
+
+def stuck_modifiers():
+    """只读取证：GetAsyncKeyState 查当前按下态修饰键，零注入。"""
+    return real_input.stuck_modifiers()
 
 if __name__ == "__main__":
     a = [s for s in sys.argv[1:] if not s.startswith("--")]; cmd = a[0] if a else "help"; I = lambda i: int(a[i]) if len(a) > i else 0
@@ -72,9 +89,14 @@ if __name__ == "__main__":
         elif cmd == "drag": r = drag(I(1), I(2), I(3), I(4))
         elif cmd == "scroll": r = scroll(I(1), I(2), I(3) or -3)
         elif cmd == "type": r = type_text(a[1] if len(a) > 1 else "")
-        elif cmd == "key": r = press_keys(a[1] if len(a) > 1 else "")
+        elif cmd == "key":
+            r = (real_input.release_all_modifiers(dry="--dry" in sys.argv)
+                 if "--release-all" in sys.argv else press_keys(a[1] if len(a) > 1 else "", dry="--dry" in sys.argv))
+        elif cmd == "release": r = release_all_modifiers(dry="--dry" in sys.argv)
+        elif cmd == "mods": r = {"action": "mods", "mode": "read-only", "injected": 0,
+                                 "stuck": stuck_modifiers()}
         elif cmd == "position": r = real_input._cursor_pos() if real_input.IS_WIN else __import__("pyautogui").position(); r = {"pos": r}
-        else: r = {"help": "move|click|drag|scroll|type|key|position <args>"}
+        else: r = {"help": "move|click|drag|scroll|type|key <ctrl+s>|key --release-all [--dry]|release [--dry]|mods|position"}
     except ImportError: r = {"error": "pyautogui 未安装，运行: pip install pyautogui Pillow"}
     except Exception as e: r = {"error": str(e)}
     print(json.dumps(r, ensure_ascii=False, indent=2))

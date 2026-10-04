@@ -51,6 +51,11 @@ SMS 临时目录，操作前召回免重复探索）、**真人验证门禁**（
      每次调用回报 `mode` 与 `focus_audit`（前台窗口/物理光标/键盘焦点前后值 + unchanged 布尔）。
      底层即 [`scripts/virtual_mouse.py`](scripts/virtual_mouse.py) 的 PostMessage 合成事件
      （op: click/scroll/drag/move/type/key/shot）；批量用 `batch_runner.py`（同样只走该后端）。
+   - **组合键门面与成对自检（R6）**：[`scripts/keycombo.py`](scripts/keycombo.py)
+     `parse/stuck/release/check`——符号全**转发** `real_input`（唯一键表，防两处逻辑漂移），
+     `check` 跨 real/virtual 干跑断言 down/up 严格配对且 `injected=0`，`release` 补 KEYUP 救回用户键盘
+     （前台 SendInput，须同意）。**红线：注入必须成对 down/up**（原子批 + try/finally 补 up +
+     前置守卫 `released_stuck` + `atexit`/信号兜底），详见 [`references/usage-guide.md`](references/usage-guide.md)。
    - **打开/定位桌面软件**（不用命令行）：[`scripts/desktop_ops.py`](scripts/desktop_ops.py)
      `icons` 枚举桌面图标、`open <图标名>` PostMessage 双击打开、`items <窗口>` 列资源管理器项、
      `openitem <窗口> <项名>` 双击进入文件夹/运行程序；`windows/win` 列窗口验证。
