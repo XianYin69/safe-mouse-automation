@@ -2,6 +2,7 @@
 """desktop_ops.py — 桌面软件纯鼠标通道（后台 PostMessage 双击，不动物理光标/不抢焦点/不用命令行启动）：
 用 UI Automation 枚举桌面图标与资源管理器项（拿到真实屏幕矩形），向目标控件 PostMessage
 WM_LBUTTONDBLCLK 打开软件/进入文件夹。Chromium 类不吃 PostMessage——浏览器用 browser_cdp.py。
+R2：动作出口统一走 virtual_mouse（本技能唯一合成鼠标/键盘后端），UIA 仅只读枚举定位。
 命令: windows | win <标题子串> | icons | open <图标名> | items <窗口标题子串> |
       openitem <窗口标题子串> <项名> | dbl <hwnd> <x> <y> | click <hwnd> <x> <y>"""
 import sys, os, json, ctypes, time
@@ -118,13 +119,9 @@ def _explorer_listview(title_sub):
     return None, None
 
 def _dblclick_screen(lvhwnd, sx, sy):
-    r = wintypes.RECT(); u.GetWindowRect(lvhwnd, ctypes.byref(r))
-    cx, cy = sx - r.left, sy - r.top
-    u.PostMessageW(lvhwnd, WM_MOVE, 0, _mklp(cx, cy))
-    u.PostMessageW(lvhwnd, WM_LBUTTONDOWN, 0x0001, _mklp(cx, cy))
-    u.PostMessageW(lvhwnd, WM_LBUTTONUP, 0, _mklp(cx, cy))
-    u.PostMessageW(lvhwnd, WM_LBUTTONDBLCLK, 0x0001, _mklp(cx, cy))
-    u.PostMessageW(lvhwnd, WM_LBUTTONUP, 0, _mklp(cx, cy))
+    """R2 统一后端：双击＝调 virtual_mouse（本技能唯一合成鼠标事件出口），不再自行拼消息序列。"""
+    import virtual_mouse
+    return virtual_mouse.click(sx, sy, "left", True, hwnd=lvhwnd)
 
 def open_icon(name):
     d = desktop_icons()
@@ -133,17 +130,20 @@ def open_icon(name):
     if not hit: return {"ok": False, "reason": f"桌面未找到图标: {name}", "icons": [i["name"] for i in d["icons"]][:40]}
     lv = _listview_hwnd()
     if not lv: return {"ok": False, "reason": "未找到桌面 SysListView32 句柄"}
-    _dblclick_screen(lv, hit["x"], hit["y"])
-    return {"ok": True, "action": "double-click", "icon": hit["name"], "screen": [hit["x"], hit["y"]], "mode": "postmessage-mouse"}
+    res = _dblclick_screen(lv, hit["x"], hit["y"])
+    res.update({"action": "double-click", "icon": hit["name"], "screen": [hit["x"], hit["y"]],
+                "backend": "postmessage-mouse-keyboard", "mode": "virtual"})
+    return res
 
 def open_item(title_sub, name):
     lv, hwnd = _explorer_listview(title_sub)
     if not lv: return {"ok": False, "reason": f"窗口内未找到列表: {title_sub}"}
     hit = next((i for i in _items_of(lv) if name.lower() in i["name"].lower()), None)
     if not hit: return {"ok": False, "reason": f"列表内未找到项: {name}", "items": [i["name"] for i in _items_of(lv)][:40]}
-    _dblclick_screen(hwnd, hit["x"], hit["y"])
-    return {"ok": True, "action": "double-click", "item": hit["name"], "screen": [hit["x"], hit["y"]],
-            "window": title_sub, "mode": "postmessage-mouse"}
+    res = _dblclick_screen(hwnd, hit["x"], hit["y"])
+    res.update({"action": "double-click", "item": hit["name"], "screen": [hit["x"], hit["y"]],
+                "window": title_sub, "backend": "postmessage-mouse-keyboard", "mode": "virtual"})
+    return res
 
 def items(title_sub):
     ua = _ua()
@@ -164,8 +164,8 @@ if __name__ == "__main__":
         elif cmd == "dbl": _dblclick_screen(int(a[1]), int(a[2]), int(a[3])); r = {"ok": True, "action": "double-click", "hwnd": int(a[1])}
         elif cmd == "click":
             h, x, y = int(a[1]), int(a[2]), int(a[3])
-            u.PostMessageW(h, WM_LBUTTONDOWN, 0x0001, _mklp(x, y)); u.PostMessageW(h, WM_LBUTTONUP, 0, _mklp(x, y))
-            r = {"ok": True, "action": "click", "hwnd": h}
+            import virtual_mouse
+            r = dict(virtual_mouse.click(x, y, "left", False, hwnd=h)); r["action"] = "click"
         else: r = {"help": "windows | win <标题子串> | icons | open <图标名> | items <窗口> | openitem <窗口> <项名> | dbl <hwnd> <x> <y> | click <hwnd> <x> <y>"}
     except Exception as e: r = {"error": str(e)}
     print(json.dumps(r, ensure_ascii=False, indent=2))

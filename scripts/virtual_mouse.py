@@ -12,6 +12,31 @@ from ctypes import wintypes
 import real_input
 
 U = ctypes.windll.user32 if sys.platform == "win32" else None
+
+
+def _init_dpi():
+    """坐标契约＝**屏幕物理像素**（与 screen-vision 的 screen_xy 一致）。
+    未声明 DPI 感知的进程里 WindowFromPoint/ScreenToClient 用的是虚拟化坐标，
+    150% 缩放屏上会把点击投到偏 1.5 倍的位置——这里显式声明 per-monitor-v2。
+    可用 env SAFE_MOUSE_NO_DPI_AWARE=1 关闭。"""
+    if U is None or os.environ.get("SAFE_MOUSE_NO_DPI_AWARE") == "1":
+        return "unaware"
+    try:
+        if U.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4)):
+            return "per-monitor-v2"
+    except Exception:
+        pass
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2); return "per-monitor"
+    except Exception:
+        pass
+    try:
+        U.SetProcessDPIAware(); return "system"
+    except Exception:
+        return "unaware"
+
+
+DPI_MODE = _init_dpi()
 MOVE, LDOWN, LUP, RDOWN, RUP, DBLCLK, MWHEEL = 0x0200, 0x0201, 0x0202, 0x0204, 0x0205, 0x0203, 0x020A
 KDOWN, KUP, CHAR = 0x0100, 0x0101, 0x0102
 MODS = real_input.MODS

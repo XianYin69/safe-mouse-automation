@@ -75,15 +75,30 @@ def check(sub):
             if hits: break
     if hits:
         ev = (titles or names)[:3]
-        alert(sub, hits, ev)
+        login_only = all(h["kind"].startswith("login") for h in hits)
+        policy = None
+        if login_only:
+            # R1：疑似登录墙先怀疑我们站错了 profile——绝不反问用户「你为什么没登录」。
+            import browser_channel
+            plan = browser_channel.plan()
+            policy = {"first_try": plan["channel"], "note": plan["note"],
+                      "forbidden_question": "为什么你没登录",
+                      "report_only": "确认仍有墙时，只报告在哪个窗口/哪个 profile 看到的墙"}
+        alert(sub, hits, ev, login_only=login_only)
         return {"blocked": True, "stop": True, "window": sub, "hits": hits, "evidence": ev,
-                "action_required": "请用户在屏幕上手动完成验证/登录后回复继续"}
+                "action_required": ("附着用户已登录的真实窗口重试（见 policy），仍不行才请用户手动登录"
+                                    if login_only else "请用户在屏幕上手动完成验证后回复继续"),
+                "policy": policy}
     return {"blocked": False, "window": sub}
 
-def alert(win, hits, ev):
+def alert(win, hits, ev, login_only=False):
+    """HUD 告警文案（R1）：登录类只报「在哪个窗口/profile 看到的墙」，绝不质问用户为何没登录。"""
     kinds = "/".join(sorted({h["kind"] for h in hits}))[:28]
     ev0 = str(ev[0])[:28] if ev else ""
-    hud_overlay.alert(f"需人工验证[{win[:16]}] 类型={kinds} 证据={ev0} 请手动完成后告知继续", 1800)
+    msg = (f"疑似登录墙[{win[:16]}] 类型={kinds} 证据={ev0} —— 先附着你已登录的真实浏览器窗口重试"
+           if login_only else
+           f"需人工验证[{win[:16]}] 类型={kinds} 证据={ev0} 请手动完成后告知继续")
+    hud_overlay.alert(msg, 1800)
 
 def web(port=None, match=""):
     args = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "browser_cdp.py")]
