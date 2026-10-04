@@ -22,8 +22,26 @@ python <SKILL_DIR>/scripts/hud_overlay.py show "[2/5] 点击下一页" 20       
 python <SKILL_DIR>/scripts/hud_overlay.py hide                              # 仅任务整体结束
 ```
 
-batch_runner 每步自动 `show`，但**不再自动 hide**——由调用方在任务结束时 hide。
-浮窗置顶、点击穿透、不抢焦点；空闲 120s 显示进程自动退出。
+batch_runner 每步自动 `show`，并在**收口时（含异常收口）自动 hide**（`--keep-hud` 可保留浮窗继续观察，
+此时仍须由调用方自行 hide）。浮窗置顶、点击穿透、不抢焦点；空闲 120s 显示进程自动退出。
+
+## HUD 进程收口与孤儿回收（R4）
+
+```bash
+python <SKILL_DIR>/scripts/hud_overlay.py procs            # 取证：列出本技能全部 HUD 实例（pid/ppid/命令行）
+python <SKILL_DIR>/scripts/hud_overlay.py hide             # 收口：清 state + 全量回收（含孤儿），返回 residual
+python <SKILL_DIR>/scripts/hud_overlay.py reap             # 只打印“父进程已死”的本技能孤儿（默认 dry-run）
+python <SKILL_DIR>/scripts/hud_overlay.py reap --yes       # 真终止这些孤儿
+```
+
+- `_run` 拉起时接收 `--parent=<pid>`（或环境变量 `SM_HUD_PARENT`），后台线程每 2s 判父活，
+  父消失即自尽并清 pid/state 文件；取不到父 pid 时退回 TTL 兜底自尽（`SM_HUD_NO_PARENT_WATCH=1`
+  可关父监控，仅用于测试人造孤儿）。
+- `_ensure` 真单实例：按 state.json 的 `hud_pid` 收敛——在册实例存活则复用并终止多余实例；
+  在册 pid 已死但仍有残留（pid 文件被覆盖而失踪）则先终止残留再拉新，保证并存数恒为 1。
+- 验收：`hide`/`reap --yes` 之后 `procs` 必须为空，且
+  `Get-CimInstance Win32_Process -Filter "Name='python.exe'"` 里命令行含
+  `safe-mouse-automation\scripts\hud_overlay.py _run` 的进程数＝0。
 
 ## 学习功能（操作前召回，成功后回写）
 
@@ -53,18 +71,19 @@ UIA 取真实屏幕矩形，向目标 SysListView32 PostMessage `WM_LBUTTONDBLCL
 最小化的任务窗口自动 `SW_SHOWNOACTIVATE` 恢复。典型链：`open <桌面图标>` → `items <窗口>` →
 `openitem <窗口> <子项>` 逐层进入，最后 `openitem <窗口> xxx.exe` 运行，再 `learn put` 记录。
 
-## 应用直接操作通道（看界面、点控件、走菜单、填输入框）
+## 应用界面通道（UIA 只读定位 → 坐标上模拟点击/打字）
 
 ```bash
-python <SKILL_DIR>/scripts/app_ops.py controls "窗口标题子串" [n]   # 枚举 UIA 控件（名称/类型/坐标）
-python <SKILL_DIR>/scripts/app_ops.py act "窗口" "元素名"            # UIA Invoke/Toggle/Select 点击
-python <SKILL_DIR>/scripts/app_ops.py set "窗口" "输入框名" "文本"   # ValuePattern.SetValue 填输入框
-python <SKILL_DIR>/scripts/app_ops.py menus "窗口"                   # 枚举经典 Win32 菜单树（含命令 ID）
-python <SKILL_DIR>/scripts/app_ops.py menu "窗口" "文件/打开"        # WM_COMMAND 零鼠标执行菜单命令
+python <SKILL_DIR>/scripts/app_ops.py controls "窗口标题子串" [n]   # 只读枚举 UIA 控件（名称/类型/矩形/screen_xy）
+python <SKILL_DIR>/scripts/app_ops.py locate "窗口" "元素名"         # 只读解析元素 → 屏幕坐标（不做动作）
+python <SKILL_DIR>/scripts/app_ops.py click "窗口" "元素名"          # 在该矩形中心发后台模拟点击
+python <SKILL_DIR>/scripts/app_ops.py set "窗口" "输入框名" "文本"   # 先模拟点击聚焦，再后台打字（非 SetValue）
+python <SKILL_DIR>/scripts/app_ops.py menus "窗口"                   # 只读枚举经典 Win32 菜单树
+python <SKILL_DIR>/scripts/app_ops.py menu "窗口" "文件/打开"        # 逐级真实鼠标点击菜单条（不再 WM_COMMAND）
 ```
 
-UIA 不需要前台/可见，被遮挡照常生效；经典菜单经 `GetMenu/PostMessage WM_COMMAND` 零鼠标零焦点。
-配合 learn：`learn op <软件名> <动作> '{"via":"app_ops.menu","path":"文件/打开","cmd":101}'` 记录，
+UIA 在本技能中**只读**（不需要前台/可见，被遮挡照常取到矩形）；动作一律落到矩形中心坐标发后台模拟鼠标/键盘事件，不再有 Invoke/SetValue/WM_COMMAND 之类捷径。
+配合 learn：`learn op <软件名> <动作> '{"via":"input_ops.click","win":"记事本","element":"文件/打开"}'` 记录，
 下次 `learn get <软件名>` 直接命中照做。
 
 ## 真人验证门禁（验证码/登录墙立即停止 + HUD 告警）
@@ -79,7 +98,74 @@ python <SKILL_DIR>/scripts/human_gate.py clear                 # 清除 HUD 告�
 命中时 HUD 显示红色⚠告警行（类型/证据/需用户操作），任务立即停止，等待用户手动完成后继续。
 batch_runner `--guard=<窗口子串>` 每步自动检测，命中即中止。**绝不尝试绕过验证。**
 
-## 浏览器后台通道（Edge/Chrome 首选，抗遮挡）
+## 统一输入后端（R2·本技能唯一动作出口）
+
+```bash
+python <SKILL_DIR>/scripts/input_ops.py click 960 540 left [--double]
+python <SKILL_DIR>/scripts/input_ops.py double 960 540
+python <SKILL_DIR>/scripts/input_ops.py rclick 960 540
+python <SKILL_DIR>/scripts/input_ops.py drag 100 200 400 500
+python <SKILL_DIR>/scripts/input_ops.py scroll 960 540 -3
+python <SKILL_DIR>/scripts/input_ops.py type 960 540 你好 hello
+python <SKILL_DIR>/scripts/input_ops.py key 960 540 "ctrl+shift+s"
+python <SKILL_DIR>/scripts/input_ops.py click --win="无标题 - 记事本" "文本编辑器"   # 只读 UIA 解析坐标
+python <SKILL_DIR>/scripts/input_ops.py resolve --win="窗口子串" "元素名"           # 只看坐标不动作
+```
+
+坐标一律为**屏幕物理像素**（与 screen-vision 的 `screen_xy` 同坐标系，`virtual_mouse` 导入时声明
+per-monitor-v2 DPI 感知）。每次调用返回 `mode` 与 `focus_audit.before/after/unchanged`
+（`GetForegroundWindow` / `GetCursorPos` / 键盘焦点），`focus_changed=true` 即为实现缺陷。
+带 `--win` 时先只读 UIA 定位，再在该矩形中心发合成事件；给定 `hwnd` 时校验坐标命中的确是
+目标窗口或其子窗口，否则 `refused:"ownership"` 拒绝投递（防误伤用户前台窗口）。
+
+## 浏览器通道策略（R1·先用 browser_channel 定通道）
+
+```bash
+python <SKILL_DIR>/scripts/browser_channel.py policy          # 看四级顺序与禁令
+python <SKILL_DIR>/scripts/browser_channel.py windows         # 只读枚举用户已运行的 Edge/Chrome 窗口
+python <SKILL_DIR>/scripts/browser_channel.py plan            # 本次该走哪个通道（不启动进程）
+python <SKILL_DIR>/scripts/browser_channel.py ensure <url>    # 按需执行（attach/已有端口时不启动）
+```
+
+顺序：**attach 用户已在跑的窗口**（真实 profile·已登录）→ 探测已开远调端口（9222/9223/9224）→
+本技能专属**持久 profile**（`<SMS_HOME>/tmp/safe-mouse-automation/browser-profile`，登录一次长期记住）→
+仅 `--ephemeral` 才一次性 profile。**绝不**默认 `%TEMP%` 空 profile，**绝不**反问用户为何没登录。
+
+## attach 真实浏览器取文本（R5·`browser_ops.py grab`）
+
+```bash
+python <SKILL_DIR>/scripts/browser_ops.py dump "Edge" 40          # 只读枚举（修好：不再 elements=[]）
+python <SKILL_DIR>/scripts/browser_ops.py grab "OAuth application settings"
+python <SKILL_DIR>/scripts/browser_ops.py grab "OAuth" --copy      # 再后台 Ctrl+A/Ctrl+C 读剪贴板
+python <SKILL_DIR>/scripts/browser_ops.py grab "OAuth" --grep=client --mask   # 写盘取证：token 全掩码
+```
+
+`grab` 是本技能**唯一取文本入口**：附着用户已在跑的真实窗口（R1，不新起进程/profile、绝不反问
+"你为什么没登录"）→ 在 **TabItem** 矩形中心后台模拟点击切页（R2 合成鼠标）→ 等 Chromium a11y
+懒加载（`lazy_wait` 回报 tries/seconds/named）→ **只读** UIA 取正文 → 单列疑似 token
+（`ghp_`/`github_pat_`/`Iv1./Iv2.`/`Ov23li./Iv23li.`/`sk-`/32~40 位 hex + 标签邻近值）。
+**明文只回 stdout，日志/链/落盘一律掩码（前6后4）**——要存档就带 `--mask`。
+UIA 取不到时退 `screenshot_verify.py window <标题> <label>` + `ask <窗口> <问题>` 视觉读数并说明。
+
+窗口被用户遮挡**不停止**：带 `hwnd` 的动作定向投递给目标窗口（`occluded_ok=True`，
+回报 `occluded_by` 痕迹）；不带该标志时仍按 ownership 护栏 `refused:"ownership"` 拒绝。
+
+## 剪贴板读回（R5·`clip_ops.py`，纯 ctypes）
+
+```bash
+python <SKILL_DIR>/scripts/clip_ops.py probe          # 自测：快照→写→读→还原
+python <SKILL_DIR>/scripts/clip_ops.py list           # 当前剪贴板有哪些格式
+python <SKILL_DIR>/scripts/clip_ops.py snapshot 取数前  # → {"id":"2026...-600"}
+python <SKILL_DIR>/scripts/clip_ops.py read           # CF_UNICODETEXT / CF_HTML / CF_DIB
+python <SKILL_DIR>/scripts/clip_ops.py restore last   # 归还用户原内容（必须做）
+```
+
+只用 user32/kernel32（`OpenClipboard(NULL)` 不关联窗口→不创建/切换前台），**绝不**借道
+`powershell`/`clip.exe`/`Get-Clipboard`（属"任意命令执行"）。快照落
+`%LOCALAPPDATA%\safe-mouse-automation\clip\`，不落 skill 目录；格式不可用/被占用/延迟渲染失效
+一律有限重试后返回 `{"error":…}`，不抛栈。
+
+## 浏览器后台通道（CDP 输入级模拟，抗遮挡）
 
 ```bash
 python <SKILL_DIR>/scripts/browser_cdp.py --port=9224 open "https://example.com"
@@ -101,7 +187,8 @@ CDP 的 `Input.dispatchMouseEvent` 是浏览器内核级模拟鼠标点击——
 ## 批量流程（桌面 Win32 应用，默认后台虚拟输入）
 
 ```bash
-python <SKILL_DIR>/scripts/batch_runner.py steps.json
+python <SKILL_DIR>/scripts/batch_runner.py steps.json                 # 默认且仅默认走统一后台后端
+python <SKILL_DIR>/scripts/batch_runner.py steps.json --real --consent=yes   # 前台兜底：必须显式带同意凭据
 ```
 
 - 步骤文件为 JSON 数组（op: click/scroll/drag/move/type/key/shot），一次进程连续执行；
@@ -160,5 +247,7 @@ screen-vision 缺失时只报错（exit 1）并提示设 `SCREEN_VISION_HOME`，
 
 ## 与其他技能集成 / 注意事项
 
-- 三通道：PostMessage（Win32）→ CDP（浏览器）→ UIA（实验性备用）；前台 SendInput 仅经用户同意。
+- 单一动作后端：PostMessage 合成鼠标/键盘（Win32）与 CDP `Input.dispatch*`（浏览器）；UIA **只读**定位；
+  前台 SendInput 不属于后台路径，须用户显式同意（`--consent=`）才可用。
+- 回归自检：`python <SKILL_DIR>/scripts/safety_gate.py focus-audit`（禁用 API 静态扫描，违规 exit 1）。
 - 所有操作经 `safety_gate.py` 门禁；分辨率/多屏变化需重取坐标；`mouse_ops.py position` 仅读不写。

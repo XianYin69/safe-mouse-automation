@@ -8,19 +8,45 @@
 | 磁盘格式化 | `format`, `diskpart`, `fdisk`, `mkfs`, `dd if=` | 禁止低级磁盘操作 |
 | 注册表修改 | `reg add/delete/import`, `regedit` | 禁止注册表写入 |
 | 系统关机/重启 | `shutdown`, `reboot`, `Stop-Computer` | 禁止系统电源操作 |
-| 进程终止 | `taskkill`, `kill` | 禁止进程管理 |
+| 进程终止 | `taskkill`, `kill` | 禁止进程管理（唯一例外见下「R4」） |
 | 任意命令执行 | `cmd /c`, `powershell -Command`, `sudo`, `runas` | 禁止提权与任意 shell |
 | 用户/组管理 | `net user`, `net localgroup` | 禁止账户操作 |
 | 服务变更 | `sc config/delete/stop`, `net stop` | 禁止服务管理 |
 | 防火墙/网络 | `netsh`, `firewall`, `iptables` | 禁止网络配置变更 |
 
+## 进程回收的唯一例外（R4·子代理进程泄漏修复）
+
+实测缺陷：派发对话收口后残留孤儿 `hud_overlay.py _run`（父进程已死），且两个 HUD 实例并存＝收敛失效。
+为此**仅**允许如下自 scoped 回收，其余进程管理一律禁止：
+
+- 作用域：只终止命令行**同时含** `safe-mouse-automation` + `hud_overlay.py` + `_run` 三要素的本技能
+  自身 HUD 进程；绝不匹配、绝不终止用户或其它技能的任何进程。
+- 手段：只用 ctypes（Toolhelp32 快照 + NtQueryInformationProcess 读命令行 + GetExitCodeProcess 判活
+  + TerminateProcess）；**禁止** taskkill / wmic / powershell 等外部 shell（属"任意命令执行"）。
+- 时机：`hide`（收口全量回收）、`reap`（默认 dry-run，须显式 `--yes`，且只清父已死的孤儿）、
+  `_ensure`（单实例收敛）、`_run` 父死自尽（自身退出，不涉他进程）。
+- 判活容错：`OpenProcess` 失败且 `GetLastError()==ERROR_ACCESS_DENIED(5)` 视为**存活**，防误杀。
+- 验收：收口后本技能 HUD 进程数必须为 0。
+
 ## 允许操作
 
-鼠标移动、左/右/双击、拖拽、滚动、截图捕获、截图比对；等价的虚拟鼠标（PostMessage）形式；HUD 只读提示浮窗。
+鼠标移动、左/右/双击、拖拽、滚动、截图捕获、截图比对；等价的虚拟鼠标（PostMessage）形式；
+后台虚拟键盘（WM_KEYDOWN/WM_KEYUP/WM_CHAR，只投递给目标窗口内**本来就持有焦点**的控件）；HUD 只读提示浮窗。
 
 ## 虚拟鼠标与 HUD 约束
 
-- 虚拟模式仅向坐标处窗口投递鼠标消息，禁止投递键盘/文本消息；物理光标始终归用户，用户可随时正常操作。
+- 虚拟模式向坐标处窗口投递鼠标消息；键盘/文本消息只投递给该窗口内**本来就持有焦点**的控件
+  （`GetGUIThreadInfo` 解析），**绝不**为了打字而 `SetForegroundWindow`；物理光标始终归用户。
+- **单一动作后端（R2）**：一切动作必须是合成鼠标/键盘事件（Win32＝PostMessage，浏览器＝CDP
+  `Input.dispatchMouseEvent/dispatchKeyEvent`）。UIA 只允许**只读**枚举与定位；
+  禁止 UIA Invoke/Toggle/Select、ValuePattern.SetValue、菜单 WM_COMMAND、命令行式启动等捷径。
+- **焦点红线（R3）**：后台路径禁止 `SetForegroundWindow`/`BringWindowToTop`/`SwitchToThisWindow`/
+  `AttachThreadInput`/移动物理光标/切换焦点；最小化窗口只允许 `ShowWindow(SW_SHOWNOACTIVATE)`，
+  确实无法操作时如实报告而不得激活。每次动作回报 `focus_audit`（前台窗口/光标/键盘焦点前后值）。
+  回归自检：`safety_gate.py focus-audit` 静态扫描，违规 exit 1（白名单仅前台兜底文件与注释行）。
+- **浏览器 profile（R1）**：优先附着用户已在跑的真实浏览器窗口（已登录），其次探测已开远调端口，
+  再次本技能专属**持久 profile**；**绝不**默认一次性 `%TEMP%` 空 profile，
+  **绝不**反问用户「你为什么没登录」——先切回真实窗口重试，仍有墙只报告在哪个窗口/profile 看到的墙。
 - 虚拟消息未生效（应用忽略合成输入）时，必须截图验证发现无变化并征得用户同意后方可回退物理模式。
 - HUD 浮窗必须同时具备：置顶、不抢焦点（WS_EX_NOACTIVATE）、点击穿透（WS_EX_TRANSPARENT）、只读展示；
   禁止在 HUD 中呈现确认按钮或接受任何输入，确认一律走对话渠道。

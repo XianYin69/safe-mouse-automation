@@ -7,15 +7,19 @@
 
 | 通道 | 脚本 | 适用场景 | 特点 |
 |------|------|----------|------|
-| PostMessage 虚拟输入 | `virtual_mouse.py` | 桌面 Win32 应用 | 不动物理光标、不抢焦点 |
-| CDP 浏览器通道 | `browser_cdp.py` | Edge/Chrome | 内核级模拟鼠标点击，抗遮挡，可 eval 取数据 |
+| **统一输入后端** | `input_ops.py` | 一切动作的唯一出口 | 坐标或 `--win <元素名>`（只读 UIA 解析），自带 focus_audit |
+| PostMessage 虚拟输入 | `virtual_mouse.py` | 桌面 Win32 应用 | 不动物理光标、不抢焦点；声明 per-monitor-v2 DPI 感知 |
+| 浏览器通道策略 | `browser_channel.py` | Edge/Chrome | R1：attach 用户已登录窗口 > 探测已开端口 > 专属持久 profile > 仅 `--ephemeral` 一次性 |
+| CDP 浏览器通道 | `browser_cdp.py` | Edge/Chrome | 内核级模拟鼠标/键盘（Input.dispatch*），抗遮挡，可 eval 取数据 |
 | 桌面软件鼠标通道 | `desktop_ops.py` | 打开/定位桌面软件 | 枚举桌面图标/资源管理器项，PostMessage 双击，不用命令行 |
-| 应用直接操作 | `app_ops.py` | 操作应用界面 | UIA 枚举控件/Invoke/SetValue + 经典菜单 WM_COMMAND 零鼠标 |
+| 应用界面（只读定位） | `app_ops.py` | 操作应用界面 | UIA **只读**枚举/定位 → 坐标上模拟点击/打字（Invoke/SetValue/WM_COMMAND 已废除） |
+| 浏览器取文本 `grab` | `browser_ops.py` | 附着已登录窗口读真实页面 | 只读 UIA + 后台点击切 Tab + 懒加载重试；token 单列、日志掩码 |
+| 剪贴板读回 | `clip_ops.py` | Ctrl+C 之后把文本取回来 | 纯 ctypes；快照→读→还原用户原内容，不激活窗口 |
 | 真人验证门禁 | `human_gate.py` | 验证码/登录墙检测 | 命中即停止任务 + HUD 红色⚠告警，绝不绕过验证 |
 | 学习功能 | `learn.py` | 软件路径/操作经验 | 操作前召回、成功后回写，缓存存 SMS 临时目录 |
 | HUD 会话浮窗 | `hud_overlay.py` | 全程任务提示 | 置顶/穿透/不抢焦点，session+step+alert 三行 |
 | 批量执行 | `batch_runner.py` | 高速多步操作 | 单进程跑完步骤清单，支持 `--guard` 每步验证门禁 |
-| 安全门禁 | `safety_gate.py` | 危险操作拦截 | 文件删除/格式化/注册表/关机/杀命令一律拒绝 |
+| 安全门禁 | `safety_gate.py` | 危险操作拦截 + R3 自检 | 危险操作一律拒绝；`focus-audit` 静态扫描抢焦点 API，违规 exit 1 |
 | 截图与视觉验证 | `screenshot_verify.py` | 前后态比对 / 看懂画面 | 纯委托 `screen-vision`（`sw.py` 截取 / `describe.py` 像素统计比对 / `recognize.py` 视觉识别） |
 | 前台回退 | `real_input.py` | 应用忽略虚拟消息时 | SendInput 真输入，**须先征得用户同意** |
 
@@ -57,7 +61,8 @@ python scripts/hud_overlay.py hide
 ## 安全约束（铁律）
 
 - **真人验证必停**：检测到验证码/人机验证/登录墙时立即停止任务，HUD 显示详细信息，等待用户手动完成；绝不绕过。
-- **后台优先**：所有输入/截图默认走 PostMessage/CDP/UIA/WM_COMMAND 后台通道；不得自行 `SetForegroundWindow`。
+- **单一动作后端（R2）**：一切动作＝合成鼠标/键盘事件（PostMessage 或 CDP `Input.dispatch*`）；UIA 只读定位，Invoke/SetValue/WM_COMMAND 已废除
+- **后台优先（R3）**：所有输入/截图默认走 PostMessage/CDP/UIA(只读) 后台通道；不得自行 `SetForegroundWindow`。
 - **前台需同意**：仅当虚拟消息被忽略且截图验证无变化时，征得用户同意后才可用 `real_input.py`（SendInput）。
 - **危险操作拒绝**：文件删除、格式化、注册表修改、系统服务变更、任意 shell 命令一律拒绝。
 - **缓存外置**：截图/HUD 状态/学习记录等缓存不得写入 skill 目录，一律落用户缓存或 SMS 临时目录。

@@ -4,8 +4,7 @@ description: safe-mouse-automation agent 指令
 使用 safe-mouse-automation skill 完成桌面自动化：一切鼠标与键盘操作默认在后台执行——
 Win32 应用用 virtual_mouse.py（PostMessage），浏览器用 browser_cdp.py（CDP 内核级模拟点击，
 被遮挡照常生效），打开/定位桌面软件用 desktop_ops.py（枚举桌面图标/资源管理器项 + PostMessage
-双击打开，不用命令行启动），直接操作应用界面用 app_ops.py（UIA 枚举控件/Invoke/SetValue +
-经典 Win32 菜单 WM_COMMAND 零鼠标执行），全程不移动物理光标、不抢焦点、不改变前台窗口。
+双击打开，不用命令行启动），直接操作应用界面用 app_ops.py（UIA **只读**枚举/定位 → 在该矩形中心发后台模拟鼠标/键盘），一切动作统一经唯一入口 input_ops.py（click/double/rclick/move/drag/scroll/type/key，坐标或 --win=<窗口> <元素名>），UIA Invoke/SetValue 与菜单 WM_COMMAND 已废除；浏览器先经 browser_channel.py 定通道（附着用户已在跑的真实窗口·已登录 > 探测已开远调端口 > 本技能专属持久 profile > 仅 --ephemeral 一次性，绝不默认 %TEMP% 空 profile）；全程不移动物理光标、不抢焦点、不改变前台窗口（回归自检 safety_gate.py focus-audit）。
 **学习功能 learn.py**：操作前 `get <软件名>` 召回已知路径/启动链/控件名/菜单路径，成功后 `put/op` 回写
 （缓存在 SMS 临时目录 <SMS_HOME>/tmp/safe-mouse-automation/learn.json）。
 **真人验证门禁 human_gate.py**：检测到验证码/登录墙/人机验证时立即停止任务，HUD 显示红色⚠告警
