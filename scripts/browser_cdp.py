@@ -4,7 +4,8 @@
 适用 Edge/Chrome；依赖 pip install websocket-client。坐标一律为页面 CSS 像素（与 getBoundingClientRect 一致）。
 命令: open <url> | targets | eval <js> | click <x> <y> [left|right] [--double] | clickel <css选择器|text=文本>
       | type <文本> | key <组合键如ctrl+a/Enter> | scroll <x> <y> <dy> | shot [label] | navigate <url>
-通用参数: --port=9223 --match=<url或标题子串>  启动: msedge --user-data-dir=<临时> --remote-debugging-port=<port> --no-first-run <url>"""
+命令: attach  |  通道顺序(R1): 附着已运行窗口 > 探测已开远调端口 > 本技能专属持久 profile > 仅 --ephemeral 才一次性 profile（绝不默认 %TEMP% 空 profile）
+通用参数: --port=9223 --match=<url或标题子串>"""
 import sys, os, json, time, base64, subprocess, urllib.request
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -74,18 +75,32 @@ def find_pos(c, sel):
 def main():
     a = [s for s in sys.argv[1:] if not s.startswith("--")]; cmdn = a[0] if a else "help"
     if cmdn == "open":
+        # R1: never default to a throwaway %TEMP% profile (user real browser is already logged in).
+        # Order: attach running window -> probe existing CDP port -> skill-owned PERSISTENT profile
+        # -> one-off profile only with explicit --ephemeral.
+        import browser_channel
         url = a[1] if len(a) > 1 else "about:blank"
-        prof = _flag("--profile", os.path.join(os.environ.get("TEMP", "/tmp"), "browser-cdp-profile"))
-        exe = _flag("--browser", "msedge")
-        import shutil
-        exe = shutil.which(exe) or {"msedge": os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
-                                    "chrome": os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe")}.get(exe, exe)
-        subprocess.Popen([exe, f"--user-data-dir={prof}", f"--remote-debugging-port={PORT}",
-                          "--remote-allow-origins=*", "--no-first-run", "--no-default-browser-check", url])
-        for _ in range(30):
-            time.sleep(1)
-            if page(): return {"ok": True, "port": PORT, "profile": prof}
-        return {"ok": False, "reason": "10s 内未出现 CDP 页面（浏览器是否已带同端口运行？）"}
+        res = browser_channel.ensure(url, _flag("--port", str(PORT)),
+                                     "--ephemeral" in sys.argv, _flag("--browser", "msedge"))
+        if res.get("channel") == "attach":
+            return {"ok": True, "channel": "attach", "cdp": False, "windows": res["windows"],
+                    "next": "动作走统一后台输入后端: python -B scripts/input_ops.py click <x> <y>",
+                    "note": res["note"]}
+        if res.get("channel") == "cdp-existing":
+            globals()["PORT"] = int(res["port"])
+            return {"ok": True, "channel": "cdp-existing", "port": PORT,
+                    "browser": res.get("browser"), "note": "附着用户已在跑的实例（真实 profile），未新起进程"}
+        globals()["PORT"] = int(res.get("port") or PORT)
+        if res.get("ok") is False:
+            return res
+        return {"ok": True, "channel": res["channel"], "port": PORT, "profile": res.get("profile"),
+                "persistent": res.get("persistent"), "login_hint": res.get("login_hint")}
+    if cmdn in ("help", ""):
+        return {"help": __doc__}
+    if cmdn == "attach":
+        import browser_channel
+        return {"channel": "attach", "windows": browser_channel.browser_windows(),
+                "usage": "python -B scripts/input_ops.py click <x> <y>  # 矩形内后台模拟点击，不激活窗口"}
     c, p = ws()
     try:
         cmd(c, "Runtime.enable"); cmd(c, "Page.enable")
