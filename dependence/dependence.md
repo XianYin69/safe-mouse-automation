@@ -6,7 +6,7 @@ SMS 安装本技能时按此清单同检同净化：**只检查、不自动安�
 
 | 技能 | 承担能力 | 入口脚本 | 缺失表现 | 路径解析 |
 |---|---|---|---|---|
-| `screen-vision` | 窗口枚举/截取、视觉识别、像素通道统计 | `scripts/sw.py`、`scripts/recognize.py`、`scripts/describe.py` | `screenshot_verify.py` 返回 `{"error":"screen-vision 未安装或路径不对，请设 SCREEN_VISION_HOME"}` 且 exit 1 | env `SCREEN_VISION_HOME`（指技能根或 `scripts` 皆可）> `~/.kilocode/skills/screen-vision/scripts` |
+| `screen-vision` | 窗口枚举/截取、视觉识别、像素通道统计 | `scripts/sw.py`、`scripts/recognize.py`、`scripts/describe.py` | `screenshot_verify.py` 返回 `{"error":"screen-vision 未安装或路径不对，请设 SCREEN_VISION_HOME"}` 且 exit 1 | env `SCREEN_VISION_HOME`（指技能根或 `scripts` 皆可）> `C:/Users/User/AppData/Local/SMS/skills/screen-vision/scripts` |
 
 - `screenshot_verify.py` 是**纯委托层**：自研 PrintWindow 抓窗口、像素直方图比对、全屏抓取**已废除**。
 - 安装方式：经 SMS 技能注册表安装 `screen-vision`；**本技能不代跑安装、不 pip 安装、缺失不回退自研**。

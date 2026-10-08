@@ -193,7 +193,7 @@
   「拒绝写入 skill 目录」守卫与 stdout UTF-8 重配置。
 - **新增子命令/函数**：`ask <窗口|图片> <问题> [--structured]`、`objects <窗口|图片>`
   （契约 v2，`screen_xy` 为屏幕物理像素绝对坐标，可直接喂 `virtual_mouse`）。
-- **依赖解析**：env `SCREEN_VISION_HOME`（技能根或 `scripts` 皆可）> `~/.kilocode/skills/screen-vision/scripts`；
+- **依赖解析**：env `SCREEN_VISION_HOME`（技能根或 `scripts` 皆可）> `C:/Users/User/AppData/Local/SMS/skills/screen-vision/scripts`；
   缺失只返回 error 并 exit 1，**不自动安装、不回退自研**；委托失败原样透传 stderr，不重试不猜。
 - **行为差异（须知）**：screen-vision 截**屏幕矩形像素**，被遮挡会截进遮挡内容，且**无全屏截取模式**；
   `capture` 现为 z-order 顶层窗口截取并附 `note`；`region` 参数已废除（返回 error）。

@@ -35,13 +35,13 @@ def ensure_dir(sub="screenshots"):
 
 def sv_scripts():
     """screen-vision 脚本目录解析：env SCREEN_VISION_HOME（技能根或 scripts 目录皆可）
-    > ~/.kilocode/skills/screen-vision/scripts。找不到返回 None——只报错，绝不自动安装、
+    > C:/Users/User/AppData/Local/SMS/skills/screen-vision/scripts。找不到返回 None——只报错，绝不自动安装、
     绝不回退自研实现。"""
     env = os.environ.get("SCREEN_VISION_HOME")
     if env:
         cands = [os.path.join(env, "scripts"), env]  # 显式设了就以它为准，设错要暴露而非静默回退
     else:
-        cands = [os.path.join(os.path.expanduser("~"), ".kilocode", "skills",
+        cands = [os.path.join(os.environ.get("SMS_SKILLS") or os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "SMS", "skills"),
                               "screen-vision", "scripts")]
     for c in cands:
         need = ("sw.py", "describe.py", "recognize.py")

@@ -158,7 +158,7 @@ SMS 临时目录，操作前召回免重复探索）、**真人验证门禁**（
   启动链、通道、验证方式，操作前 `get` 召回、成功后 `put` 回写。绝不落 skill 目录。
 - **技能级依赖 `screen-vision`**（窗口枚举/截取/视觉识别/像素统计，清单见
   [`dependence/dependence.md`](dependence/dependence.md)）：`screenshot_verify.py` 的全部视觉能力委托它，
-  路径解析 env `SCREEN_VISION_HOME`（可指技能根或 `scripts`）> `~/.kilocode/skills/screen-vision`；
+  路径解析 env `SCREEN_VISION_HOME`（可指技能根或 `scripts`）> `C:/Users/User/AppData/Local/SMS/skills/screen-vision`；
   **缺失只报错（exit 1），绝不自动安装、绝不回退自研实现**；自研 PrintWindow 抓窗口与像素直方图
   比对**已废除**（screen-vision 截屏幕矩形像素，被遮挡会截进遮挡内容，无全屏模式）。
 - 依赖：`websocket-client`（CDP 浏览器通道）、`uiautomation`（UIA 桌面操作）、`pyautogui`（仅非 Windows

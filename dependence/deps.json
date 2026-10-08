@@ -4,7 +4,7 @@
       "name": "screen-vision",
       "type": "skill",
       "source": "local_skill",
-      "path": "~/.kilocode/skills/screen-vision",
+      "path": "C:/Users/User/AppData/Local/SMS/skills/screen-vision",
       "required": true,
       "entry": ["scripts/sw.py", "scripts/recognize.py", "scripts/describe.py"],
       "used_for": "窗口枚举/截取/视觉识别/像素统计",

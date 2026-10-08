@@ -78,7 +78,7 @@ python scripts/hud_overlay.py hide
 
 - **技能级依赖 `screen-vision`**（必需）：窗口枚举/截取/视觉识别/像素统计——`screenshot_verify.py`
   的全部视觉能力委托它，本技能已废除自研 PrintWindow 抓窗口与像素比对。路径解析
-  env `SCREEN_VISION_HOME` > `~/.kilocode/skills/screen-vision`；**缺失只报错（exit 1），不自动安装**。
+  env `SCREEN_VISION_HOME` > `C:/Users/User/AppData/Local/SMS/skills/screen-vision`；**缺失只报错（exit 1），不自动安装**。
   清单见 [`dependence/dependence.md`](dependence/dependence.md)。
 - `uiautomation`（UIA 桌面操作）、`websocket-client`（CDP 浏览器通道）
 - `pyautogui`（仅非 Windows 平台回退）
