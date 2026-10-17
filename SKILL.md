@@ -106,6 +106,34 @@ SMS 临时目录，操作前召回免重复探索）、**真人验证门禁**（
    若任务异常结束或不确定是否残留，再跑 `hud_overlay.py procs` 取证 + `reap --yes` 清孤儿——
    **验收标准＝收口后本技能 HUD 进程数为 0**（R4）。
 
+## 范围描述
+本技能的坐标与边界范围通过以下字段描述，全部以**屏幕物理像素**为口径：
+
+### screen_xy：屏幕物理像素坐标（首选）
+- 格式：`[sx, sy]`，对应显示器物理像素的绝对位置（per-monitor-v2 DPI 感知）
+- 来源：`app_ops.py controls` 输出的 `screen_xy` 字段；`screenshot_verify.py objects`（→ `recognize.py --structured`）输出契约 v2 的 `screen_xy`
+- **可直接喂给 `input_ops.py click/double/rclick/move/drag` 作为目标坐标**，无需换算
+- 注意：若窗口部分超出屏幕顶边（`top < 0`），已 clamp 处理，`screen_xy` 仍反映可见区域的实际屏幕位置
+
+### rect（窗口/控件矩形）
+- 格式：`[left, top, right, bottom]`，屏幕物理像素
+- 来源：`desktop_ops.py windows/icons`、`app_ops.py controls` 的 `rect` 字段
+- 用于：推断可点击范围、判断坐标是否属于该窗口（ownership 校验）
+
+### 使用场景
+| 场景 | 推荐字段 |
+|------|----------|
+| 执行鼠标点击/悬停 | `screen_xy` |
+| 判断坐标是否属于某窗口 | `rect` + ownership 校验 |
+| 跨分辨率复用定位逻辑 | `bbox_norm`（来自 screen-vision，本技能不直接产出） |
+| 精确标注/调试 | `rect` + `screen_xy` |
+
+### 坐标校验与拒绝投递
+`input_ops.py` 在带 `--win` 参数时，会先只读 UIA 定位目标元素，取得其 `screen_xy` 或 `rect`，再向矩形中心发合成事件；给定 `hwnd` 时还校验坐标命中的确是该窗口或其子窗口，否则返回 `refused:"ownership"` 拒绝投递（防误伤用户前台窗口）。
+
+### 与 screen-vision 的衔接
+本技能不含自研视觉实现，屏幕视觉（窗口枚举/截取/视觉识别/像素统计）一律委托 `screen-vision` 技能。`screenshot_verify.py objects`（→ `recognize.py ask --structured`）输出的每个对象的 `screen_xy` 可直接传给 `input_ops.py click`。坐标契约 = 屏幕物理像素，与 `virtual_mouse.py` 导入时声明的 per-monitor-v2 DPI 感知同一坐标系。
+
 ## 2. 安全约束（铁律）
 
 - **禁止操作**：文件删除、格式化、注册表修改、系统服务变更、执行任意 shell 命令。
